@@ -8,6 +8,7 @@ class MemoryManager;
 #include <fstream>
 #include <cstdint>
 #include <vector>
+#include <unordered_map>
 
 #include "util.h"
 
@@ -20,7 +21,7 @@ class MemoryManager;
 // Which means we can compare BCTRL's destination with the NID list to detect module calls
 // Boom.
 
-extern std::vector<uint32_t> syscall_nids;
+extern std::unordered_map<uint32_t, uint32_t> syscall_nids;
 
 class ElfLoader
 {

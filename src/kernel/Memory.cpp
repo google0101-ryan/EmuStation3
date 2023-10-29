@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <format>
 #include <cstring>
+#include <fstream>
 
 uint8_t* base;
 
@@ -66,6 +67,16 @@ void MemoryManager::MarkMemoryRegion(uint64_t, uint64_t, int)
     //     else
     //         w_pages[i / PAGE_SIZE] = nullptr;
     // }
+}
+
+void MemoryManager::MapMemory(uint64_t start, uint64_t end, uint8_t *ptr)
+{
+}
+
+void MemoryManager::DumpRam()
+{
+    std::ofstream out("mem.bin");
+    out.write((char*)base, 0x00100000);
 }
 
 void MemoryManager::Write8(uint64_t addr, uint8_t data, bool slow)

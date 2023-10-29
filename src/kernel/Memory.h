@@ -47,10 +47,13 @@ public:
     void MarkMemoryRegion(uint64_t start, uint64_t end, int flags); // 1 = R, 2 = W
     uint8_t* GetRawPtr(uint64_t offset) {return base + offset;}
 
+    void MapMemory(uint64_t start, uint64_t end, uint8_t* ptr);
+
+    void DumpRam();
+
     MemoryBlock* stack;
     MemoryBlock* main_mem;
 private:
-
     uint8_t* base;
     uint8_t** r_pages;
     uint8_t** w_pages;

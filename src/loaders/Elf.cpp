@@ -4,8 +4,9 @@
 #include <format>
 #include <cassert>
 #include <cstring>
+#include <unordered_map>
 
-std::vector<uint32_t> syscall_nids;
+std::unordered_map<uint32_t, uint32_t> syscall_nids;
 
 #define SCE_MAGIC (('S' << 16) | ('C' << 8) | 'E')
 #define ELF_MAGIC (('E' << 16) | ('L' << 8) | 'F')
@@ -113,6 +114,11 @@ ElfLoader::ElfLoader(std::string fname, MemoryManager &mman)
         phdr->Read_p_memsz(cur_p);
         phdr->Read_p_align(cur_p);
 
+        printf("Found phdr of type 0x%08x\n", phdr->p_type);
+        printf("\tVaddr: 0x%08lx\n", phdr->p_vaddr);
+        printf("\tMemsz: 0x%08lx\n", phdr->p_memsz);
+        printf("\toffset: 0x%08lx\n", phdr->p_offset);
+
         phdrs.push_back(phdr);
     }
 }
@@ -190,6 +196,7 @@ uint64_t ElfLoader::LoadIntoMemory()
             if (info.magic != 0x13bcc5f6)
             {
                 printf("ERROR: Bad magic for process param: 0x%08x\n", info.magic);
+                exit(1);
             }
             else
             {
@@ -222,7 +229,7 @@ uint64_t ElfLoader::LoadIntoMemory()
             if (prx.magic != 0x1b434cec)
             {
                 printf("ERROR: Bad magic for prx param: 0x%08x\n", prx.magic);
-                // exit(1);
+                exit(1);
             }
 
             printf("*** size: 0x%x\n", prx.size);
@@ -266,8 +273,11 @@ uint64_t ElfLoader::LoadIntoMemory()
                 for (int i = 0; i < stubHdr.s_imports; i++)
                 {
                     uint32_t nid = mman.Read32(stubHdr.s_nid + i * 4);
+                    uint32_t addr = mman.Read32(stubHdr.s_text + i * 4);
 
-                    syscall_nids.push_back(nid);
+                    printf("\tLoading import 0x%08x at 0x%08x\n", nid, addr);
+
+                    syscall_nids[addr] = nid;
                 }
             }
         }

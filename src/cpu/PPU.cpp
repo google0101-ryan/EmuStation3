@@ -1,7 +1,9 @@
 #include "PPU.h"
+#include <kernel/Syscall.h>
 
 #include <stdio.h>
 #include <string.h>
+#include <vector>
 
 CellPPU* dump_ppu;
 
@@ -45,13 +47,24 @@ void CellPPU::Run()
     uint32_t opcode = manager->Read32(pc);
     pc += 4;
 
+    printf("0x%02x: ", (opcode >> 26) & 0x3F);
+
+    if (opcode == 0x60000000)
+    {
+        printf("nop\n");
+        return;
+    }
+    else if (opcode == 0x44000002)
+    {
+        Syscalls::DoSyscall(this);
+        return;
+    }
+
     if (!opcodes[(opcode >> 26) & 0x3F])
     {
         printf("Unknown opcode 0x%08x\n", opcode);
         exit(1);
     }
-
-    printf("0x%02x: ", (opcode >> 26) & 0x3F);
 
     opcodes[(opcode >> 26) & 0x3F](opcode);
 }
@@ -64,4 +77,6 @@ void CellPPU::Dump()
     printf("ctr\t->\t0x%08lx\n", ctr);
     for (int i = 0; i < 8; i++)
         printf("cr%d\t->\t%d\n", i, cr.cr[i].val);
+    printf("XER: [%s]\n", xer.ca ? "c" : ".");
+    manager->DumpRam();
 }

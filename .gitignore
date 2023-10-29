@@ -3,3 +3,5 @@
 file
 log
 ps3
+*.swp
+build
