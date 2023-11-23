@@ -1,6 +1,8 @@
 #include "kernel/Memory.h"
+#include "kernel/Modules/VFS.h"
 #include "loaders/Elf.h"
 #include "cpu/PPU.h"
+#include "rsx/rsx.h"
 
 #include <exception>
 #include <cstdio>
@@ -29,15 +31,28 @@ int main(int argc, char** argv)
         ElfLoader loader = ElfLoader(argv[1], manager);
         auto entry = loader.LoadIntoMemory();
 
+        VFS::InitVFS();
+
         // Create the fallback trampoline (in case a program returns)
         uint64_t ret_addr = manager.main_mem->Alloc(4);
         manager.Write32(ret_addr, 0x44000042);
 
-        CellPPU ppu = CellPPU(entry, ret_addr, &manager);
+        CellPPU* ppu = new CellPPU(entry, ret_addr, manager);
+
+        rsx->Init();
+        rsx->SetMman(&manager);
+
+        int cycles = 0;
 
         while (1)
         {
-            ppu.Run();
+            if (cycles >= 53333)
+            {
+                rsx->Present();
+                cycles = 0;
+            }
+            cycles++;
+            ppu->Run();
         }
     }
     catch (std::exception& e)

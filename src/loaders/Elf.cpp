@@ -147,13 +147,16 @@ uint64_t ElfLoader::LoadIntoMemory()
             if (phdr->p_memsz == 0)
                 continue;
 
-            printf("Loading segment 0x%08lx->0x%08lx (0x%08lx)\n", phdr->p_offset, phdr->p_vaddr, phdr->p_memsz);
-
             auto ptr = mman.GetRawPtr(phdr->p_vaddr);
+            
+            printf("Loading segment 0x%08lx->0x%08lx (0x%08lx %p)\n", phdr->p_offset, phdr->p_vaddr, phdr->p_memsz, ptr);
 
-            memcpy(ptr, cur_p, phdr->p_filesz);
+            for (int i = 0; i < phdr->p_filesz; i++)
+                mman.Write8(phdr->p_vaddr+i, *cur_p++);
+
             if (phdr->p_memsz > phdr->p_filesz)
-                memset(ptr+phdr->p_filesz, 0, phdr->p_memsz - phdr->p_filesz);
+                for (int i = phdr->p_filesz; i < phdr->p_memsz; i++)
+                    mman.Write8(phdr->p_vaddr+i, 0);
 
             printf("Region is ");
 
@@ -174,7 +177,6 @@ uint64_t ElfLoader::LoadIntoMemory()
             
             printf("\n");
             
-            mman.MarkMemoryRegion(phdr->p_vaddr, phdr->p_vaddr+phdr->p_memsz, flags);
             mman.main_mem->MarkUsed(phdr->p_vaddr, phdr->p_memsz);
         }
         else if (phdr->p_type == 0x60000001)
@@ -196,7 +198,7 @@ uint64_t ElfLoader::LoadIntoMemory()
             if (info.magic != 0x13bcc5f6)
             {
                 printf("ERROR: Bad magic for process param: 0x%08x\n", info.magic);
-                exit(1);
+                throw std::runtime_error("Bad proc parm magic");
             }
             else
             {
@@ -210,6 +212,8 @@ uint64_t ElfLoader::LoadIntoMemory()
         else if (phdr->p_type == 0x60000002)
         {
             if (!phdr->p_filesz) continue;
+
+            printf("Found prx param at 0x%08lx\n", phdr->p_vaddr);
 
             auto loc = mman.GetRawPtr(phdr->p_vaddr);
             ProcPrxParam prx;
@@ -229,7 +233,7 @@ uint64_t ElfLoader::LoadIntoMemory()
             if (prx.magic != 0x1b434cec)
             {
                 printf("ERROR: Bad magic for prx param: 0x%08x\n", prx.magic);
-                exit(1);
+                throw std::runtime_error("Bad prx parm magic");
             }
 
             printf("*** size: 0x%x\n", prx.size);

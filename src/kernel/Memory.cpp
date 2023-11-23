@@ -8,50 +8,27 @@
 #include <cstring>
 #include <fstream>
 
-uint8_t* base;
-
 #define PAGE_SIZE (64*1024)
 
 MemoryManager::MemoryManager()
 {
-    r_pages = new uint8_t*[0x2'0000'0000 / PAGE_SIZE];
-    w_pages = new uint8_t*[0x2'0000'0000 / PAGE_SIZE];
+    pages = new uint8_t*[0x100000000ULL / PAGE_SIZE];
 
-    base = (uint8_t*)mmap64((void*)0x2'0000'0000, 0x2'0000'0000, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+    memset(pages, 0, (0x100000000ULL / PAGE_SIZE) * sizeof(uint8_t*));
+    memset(pages, 0, (0x100000000ULL / PAGE_SIZE) * sizeof(uint8_t*));
 
-    if (base == (uint8_t*)MAP_FAILED)
-    {
-        printf("Failed to mmap 8GB of memory! %s\n", strerror(errno));
-        exit(1);
-    }
-
-    for (size_t i = 0; i < 0xE000'0000ULL; i += PAGE_SIZE)
-    {
-        r_pages[i / PAGE_SIZE] = (base + i);
-        w_pages[i / PAGE_SIZE] = (base + i);
-    }
-
-    for (size_t i = 0xE000'0000ULL; i < 0xE060'0000ULL; i += PAGE_SIZE)
-    {
-        r_pages[i / PAGE_SIZE] = nullptr; // SPU memory is slow
-        w_pages[i / PAGE_SIZE] = nullptr; // SPU memory is slow
-    }
-
-    for (size_t i = 0xE060'0000ULL; i < 0x2'0000'0000; i += PAGE_SIZE)
-    {
-        r_pages[i / PAGE_SIZE] = (base + i);
-        w_pages[i / PAGE_SIZE] = (base + i);
-    }
-
-    stack = new MemoryBlock(0xD0000000ULL, 0x100000000ULL);
-    main_mem = new MemoryBlock(0x00010000, 0x2FFF0000);
+    stack = new MemoryBlock(0xD0000000ULL, 0x100000000ULL, this);
+    main_mem = new MemoryBlock(0x00010000, 0x2FFF0000, this);
+    prx_mem = new MemoryBlock(0x30000000, 0x40000000, this);
+    RSXCmdMem = new MemoryBlock(0x40000000, 0x50000000, this);
+    RSXFBMem = new MemoryBlock(0xC0000000, 0xD0000000, this);
 }
 
 MemoryManager::~MemoryManager()
 {
     printf("[Mem]: Unmapping memory...\n");
-    munmap(base, 0x2'0000'0000);
-    delete[] r_pages;
+    DumpRam();
+    delete[] pages;
 }
 
 void MemoryManager::MarkMemoryRegion(uint64_t, uint64_t, int)
@@ -63,20 +40,43 @@ void MemoryManager::MarkMemoryRegion(uint64_t, uint64_t, int)
     //     else
     //         r_pages[i / PAGE_SIZE] = nullptr;
     //     if (flags & FLAG_W)
-    //         w_pages[i / PAGE_SIZE] = (base + i);
+    //         pages[i / PAGE_SIZE] = (base + i);
     //     else
-    //         w_pages[i / PAGE_SIZE] = nullptr;
+    //         pages[i / PAGE_SIZE] = nullptr;
     // }
 }
 
 void MemoryManager::MapMemory(uint64_t start, uint64_t end, uint8_t *ptr)
 {
+    printf("Mapping memory from 0x%08lx -> 0x%08lx\n", start, end);
+    for (size_t i = 0; i < (end-start); i += PAGE_SIZE)
+    {
+        pages[(i+start) / PAGE_SIZE] = (ptr + i);
+    }
+}
+
+uint8_t* MemoryManager::GetRawPtr(uint64_t offs)
+{
+    return pages[offs / PAGE_SIZE] + (offs % PAGE_SIZE);
 }
 
 void MemoryManager::DumpRam()
 {
     std::ofstream out("mem.bin");
-    out.write((char*)base, 0x00100000);
+    out.write((char*)main_mem->data, 0x100000);
+    out.close();
+    
+    out.open("stack.bin");
+    out.write((char*)stack->data, 0x10000);
+    out.close();
+
+    out.open("rsx_cmd.bin");
+    out.write((char*)main_mem->data+0xF0000, 0x6FFC);
+    out.close();
+
+    out.open("rsxfbmem.bin");
+    out.write((char*)RSXFBMem->data, 0x10000000);
+    out.close();
 }
 
 void MemoryManager::Write8(uint64_t addr, uint8_t data, bool slow)
@@ -86,17 +86,38 @@ void MemoryManager::Write8(uint64_t addr, uint8_t data, bool slow)
         auto page = addr / PAGE_SIZE;
         auto page_offs = addr % PAGE_SIZE;
 
-        if (!w_pages[page])
+        if (!pages[page])
         {
             printf("No memory mapped for 0x%08lx, trying slow I/O\n", addr);
             Write8(addr, data, true);
         }
 
-        w_pages[page][page_offs] = data;
+        pages[page][page_offs] = data;
     }
     else
     {
         throw std::runtime_error(std::format("Error: Write {:#04x} to unknown addr {:#010x}", data, addr));
+    }
+}
+
+void MemoryManager::Write16(uint64_t addr, uint16_t data, bool slow)
+{
+    if (!slow)
+    {
+        auto page = addr / PAGE_SIZE;
+        auto page_offs = addr % PAGE_SIZE;
+
+        if (!pages[page])
+        {
+            printf("No memory mapped for 0x%08lx, trying slow I/O\n", addr);
+            Write16(addr, data, true);
+        }
+
+        *(uint16_t*)&pages[page][page_offs] = __bswap_16(data);
+    }
+    else
+    {
+        throw std::runtime_error(std::format("Error: Write16 {:#04x} to unknown addr {:#010x}", data, addr));
     }
 }
 
@@ -107,13 +128,13 @@ void MemoryManager::Write32(uint64_t addr, uint32_t data, bool slow)
         auto page = addr / PAGE_SIZE;
         auto page_offs = addr % PAGE_SIZE;
 
-        if (!w_pages[page])
+        if (!pages[page])
         {
             printf("No memory mapped for 0x%08lx, trying slow I/O\n", addr);
             Write32(addr, data, true);
         }
 
-        *(uint32_t*)&w_pages[page][page_offs] = __bswap_32(data);
+        *(uint32_t*)&pages[page][page_offs] = __bswap_32(data);
     }
     else
     {
@@ -128,17 +149,59 @@ void MemoryManager::Write64(uint64_t addr, uint64_t data, bool slow)
         auto page = addr / PAGE_SIZE;
         auto page_offs = addr % PAGE_SIZE;
 
-        if (!w_pages[page])
+        if (!pages[page])
         {
             printf("No memory mapped for 0x%08lx, trying slow I/O\n", addr);
             Write64(addr, data, true);
         }
 
-        *(uint64_t*)&w_pages[page][page_offs] = __bswap_64(data);
+        *(uint64_t*)&pages[page][page_offs] = __bswap_64(data);
     }
     else
     {
         throw std::runtime_error(std::format("Error: Write64 {:#04x} to unknown addr {:#010x}", data, addr));
+    }
+}
+
+uint8_t MemoryManager::Read8(uint64_t addr, bool slow)
+{
+    if (!slow)
+    {
+        auto page = addr / PAGE_SIZE;
+        auto page_offs = addr % PAGE_SIZE;
+
+        if (!pages[page])
+        {
+            printf("No memory mapped for 0x%08lx, trying slow I/O\n", addr);
+            return Read8(addr, true);
+        }
+
+        return pages[page][page_offs];
+    }
+    else
+    {
+        throw std::runtime_error(std::format("Error: Read8 from unknown addr {:#010x}", addr));
+    }
+}
+
+uint16_t MemoryManager::Read16(uint64_t addr, bool slow)
+{
+    if (!slow)
+    {
+        auto page = addr / PAGE_SIZE;
+        auto page_offs = addr % PAGE_SIZE;
+
+        if (!pages[page])
+        {
+            printf("No memory mapped for 0x%08lx, trying slow I/O\n", addr);
+            return Read16(addr, true);
+        }
+
+        return __bswap_16(*(uint16_t*)&pages[page][page_offs]);
+    }
+    else
+    {
+        throw std::runtime_error(std::format("Error: Read16 from unknown addr {:#010x}", addr));
     }
 }
 
@@ -149,13 +212,13 @@ uint32_t MemoryManager::Read32(uint64_t addr, bool slow)
         auto page = addr / PAGE_SIZE;
         auto page_offs = addr % PAGE_SIZE;
 
-        if (!r_pages[page])
+        if (!pages[page])
         {
             printf("No memory mapped for 0x%08lx, trying slow I/O\n", addr);
             return Read32(addr, true);
         }
 
-        return __bswap_32(*(uint32_t*)&r_pages[page][page_offs]);
+        return __bswap_32(*(uint32_t*)&pages[page][page_offs]);
     }
     else
     {
@@ -170,24 +233,28 @@ uint64_t MemoryManager::Read64(uint64_t addr, bool slow)
         auto page = addr / PAGE_SIZE;
         auto page_offs = addr % PAGE_SIZE;
 
-        if (!r_pages[page])
+        if (!pages[page])
         {
             printf("No memory mapped for 0x%08lx, trying slow I/O\n", addr);
             return Read64(addr, true);
         }
 
-        return __bswap_64(*(uint64_t*)&r_pages[page][page_offs]);
+        return __bswap_64(*(uint64_t*)&pages[page][page_offs]);
     }
     else
     {
-        throw std::runtime_error(std::format("Error: Read64 from unknown addr {:#010x}", addr));
+        printf("Unmapped addr 0x%08lx!\n", addr);
+        throw std::runtime_error(std::format("Error: Read64 from unknown addr {:#010x}", addr).c_str());
     }
 }
 
-MemoryBlock::MemoryBlock(uint64_t start, uint64_t end)
+MemoryBlock::MemoryBlock(uint64_t start, uint64_t end, MemoryManager* manager, bool map)
 {
     begin = start;
     len = (end - start);
+    data = new uint8_t[len];
+    if (map)
+        manager->MapMemory(start, end, data);
 }
 
 uint64_t MemoryBlock::Alloc(uint64_t size)

@@ -7,9 +7,15 @@ set(CXX_STANDARD c++23)
 set(SOURCES src/main.cpp
             src/cpu/PPU.cpp
             src/cpu/PPUInstrs.cpp
+            src/rsx/rsx.cpp
+            src/rsx/VPE.cpp
             src/kernel/Memory.cpp
             src/kernel/ModuleManager.cpp
             src/kernel/Modules/Spinlock.cpp
+            src/kernel/Modules/Mutex.cpp
+            src/kernel/Modules/CellGcm.cpp
+            src/kernel/Modules/CellThread.cpp
+            src/kernel/Modules/VFS.cpp
             src/kernel/Syscall.cpp
             src/loaders/Elf.cpp)
 
@@ -28,7 +34,7 @@ target_link_libraries(ps3 ${SDL2_LIBRARIES})
 if(MSVC)
   target_compile_options(${TARGET_NAME} PRIVATE /W4 /WX)
 else()
-  target_compile_options(${TARGET_NAME} PRIVATE -pg -O3 -mincoming-stack-boundary=3 -std=c++23)
+  target_compile_options(${TARGET_NAME} PRIVATE -pg -O0 -mincoming-stack-boundary=3 -std=c++23)
   target_link_options(${TARGET_NAME} PRIVATE -pg)
 endif()
 

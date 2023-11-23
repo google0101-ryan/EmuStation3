@@ -58,6 +58,19 @@
         "list": "cpp",
         "ratio": "cpp",
         "iomanip": "cpp",
-        "sstream": "cpp"
+        "sstream": "cpp",
+        "csignal": "cpp",
+        "condition_variable": "cpp",
+        "mutex": "cpp",
+        "semaphore": "cpp",
+        "stop_token": "cpp",
+        "thread": "cpp",
+        "strstream": "cpp",
+        "complex": "cpp",
+        "map": "cpp",
+        "iostream": "cpp",
+        "ranges": "cpp",
+        "cfenv": "cpp",
+        "typeindex": "cpp"
     }
 }
