@@ -18,7 +18,7 @@ struct sys_lwmutex_attr
     char name[8];
 };
 
-Result MutexModule::sysLwMutexCreate(uint64_t mutexptr, uint64_t attrptr, CellPPU *ppu)
+uint32_t MutexModule::sysLwMutexCreate(uint64_t mutexptr, uint64_t attrptr, CellPPU *ppu)
 {
     char name[9] = {0};
     for (int i = 0; i < 8; i++)
@@ -37,7 +37,7 @@ Result MutexModule::sysLwMutexCreate(uint64_t mutexptr, uint64_t attrptr, CellPP
     return CELL_OK;
 }
 
-Result MutexModule::sysLwMutexLock(uint64_t mutexptr, uint64_t timeout, CellPPU *ppu)
+uint32_t MutexModule::sysLwMutexLock(uint64_t mutexptr, uint64_t timeout, CellPPU *ppu)
 {
     if (ppu->GetManager()->Read64(mutexptr))
     {
@@ -52,7 +52,7 @@ Result MutexModule::sysLwMutexLock(uint64_t mutexptr, uint64_t timeout, CellPPU 
     return CELL_OK;
 }
 
-Result MutexModule::sysLwMutexUnlock(uint64_t mutexptr, CellPPU *ppu)
+uint32_t MutexModule::sysLwMutexUnlock(uint64_t mutexptr, CellPPU *ppu)
 {
     ppu->GetManager()->Write64(mutexptr, 0);
 

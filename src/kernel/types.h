@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-enum Result : uint32_t
+enum : uint32_t
 {
     CELL_OK =     0x00000000,
     CELL_CANCEL = 0x00000001,

@@ -7,6 +7,6 @@
 namespace CellThread
 {
 
-Result sysGetThreadId(uint32_t ptr, CellPPU* ppu);
+uint32_t sysGetThreadId(uint32_t ptr, CellPPU* ppu);
 
 }

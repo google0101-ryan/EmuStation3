@@ -339,10 +339,13 @@ vec4 VertexShader::read_src(int index, std::string& disasm)
 }
 
 #define BINDING_LOCATION(x) manager->Read32(manager->RSXFBMem->GetStart() + binding.offset + (binding.stride * vtx_index) + (x));
+#define BINDING_LOCATION_U8(x) manager->Read8(manager->RSXFBMem->GetStart() + binding.offset + (binding.stride * vtx_index) + (x));
 
 vec4 VertexShader::read_location(int index, std::string& disasm)
 {
     auto binding = GetBinding(index);
+
+    printf("Binding is at 0x%08x\n", binding.offset);
 
     std::array<std::string, 16> locNames =
     {
@@ -399,16 +402,17 @@ vec4 VertexShader::read_location(int index, std::string& disasm)
     {
         if (binding.elems == 4)
         {
-            ret.x = BINDING_LOCATION(0);
-            ret.y = BINDING_LOCATION(4);
-            ret.z = BINDING_LOCATION(8);
-            ret.w = BINDING_LOCATION(12);
+            ret.x = BINDING_LOCATION_U8(0);
+            ret.y = BINDING_LOCATION_U8(1);
+            ret.z = BINDING_LOCATION_U8(2);
+            ret.w = BINDING_LOCATION_U8(3);
+            printf("%f, %f, %f, %f\n", ret.x, ret.y, ret.z, ret.w);
         }
         else if (binding.elems == 3)
         {
-            ret.x = BINDING_LOCATION(0);
-            ret.y = BINDING_LOCATION(4);
-            ret.z = BINDING_LOCATION(8);
+            ret.x = BINDING_LOCATION_U8(0);
+            ret.y = BINDING_LOCATION_U8(1);
+            ret.z = BINDING_LOCATION_U8(2);
             ret.w = 1.0f;
         }
         else

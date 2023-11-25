@@ -13,6 +13,11 @@ struct Color
     uint8_t r, g, b, a;
 };
 
+struct Vertex
+{
+    vec4 pos, color;
+};
+
 enum DepthTestFunc
 {
     NEVER = 0x200,
@@ -62,7 +67,7 @@ private:
     void DoCmd(uint32_t fullCmd, uint32_t cmd, std::vector<uint32_t>& args, int argCount);
     void ClearFramebuffers(uint32_t mask);
 
-    void DrawTriangle(vec4 p0, vec4 p1, vec4 p2);
+    void DrawTriangle(Vertex v0, Vertex v1, Vertex v2);
 
     MemoryManager* manager;
 

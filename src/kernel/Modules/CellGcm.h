@@ -14,7 +14,7 @@ enum CellVideoOutOutputState : int32_t
 	CELL_VIDEO_OUT_OUTPUT_STATE_PREPARING,
 };
 
-enum CellVideoOutError : uint32_t
+enum : uint32_t
 {
     CELL_VIDEO_OUT_ERROR_NOT_IMPLEMENTED          = 0x8002b220,
 	CELL_VIDEO_OUT_ERROR_ILLEGAL_CONFIGURATION    = 0x8002b221,
@@ -39,18 +39,20 @@ enum CellVideoOutScanMode : int32_t
 	CELL_VIDEO_OUT_SCAN_MODE_PROGRESSIVE,
 };
 
-Result cellGcmInitBody(uint32_t ctxtPtr, uint32_t cmdSize, uint32_t ioSize, uint32_t ioAddrPtr, CellPPU* ppu);
-CellVideoOutError cellVideOutGetState(uint32_t videoOut, uint32_t deviceIndex, uint32_t statePtr, CellPPU* ppu);
-CellVideoOutError cellGetResolution(uint32_t resId, uint32_t resPtr, CellPPU* ppu);
-Result cellVideoOutConfigure(uint32_t videoOut, uint32_t configPtr);
-Result cellGcmSetFlipMode(int mode);
-Result cellGcmGetConfiguration(uint32_t configPtr, CellPPU* ppu);
-Result cellGcmAddressToOffset(uint32_t address, uint32_t offsPtr, CellPPU* ppu);
-Result cellGcmSetDisplayBuffer(uint8_t bufId, uint32_t offset, uint32_t pitch, uint32_t width, uint32_t height, CellPPU* ppu);
+uint32_t cellGcmInitBody(uint32_t ctxtPtr, uint32_t cmdSize, uint32_t ioSize, uint32_t ioAddrPtr, CellPPU* ppu);
+uint32_t cellVideOutGetState(uint32_t videoOut, uint32_t deviceIndex, uint32_t statePtr, CellPPU* ppu);
+uint32_t cellGetResolution(uint32_t resId, uint32_t resPtr, CellPPU* ppu);
+uint32_t cellVideoOutConfigure(uint32_t videoOut, uint32_t configPtr);
+uint32_t cellGcmSetFlipMode(int mode);
+uint32_t cellGcmGetConfiguration(uint32_t configPtr, CellPPU* ppu);
+uint32_t cellGcmAddressToOffset(uint32_t address, uint32_t offsPtr, CellPPU* ppu);
+uint32_t cellGcmSetDisplayBuffer(uint8_t bufId, uint32_t offset, uint32_t pitch, uint32_t width, uint32_t height, CellPPU* ppu);
 int cellGcmSetFlipCommand(uint32_t contextPtr, uint32_t id, CellPPU* ppu);
 uint32_t cellGcmGetControlRegister(CellPPU* ppu);
 uint32_t cellGcmGetFlipStatus();
 void cellGcmResetFlipStatus();
+uint32_t cellGcmGetTiledPitchSize(uint32_t size);
+uint32_t cellGcmSetTileInfo(uint8_t index, uint8_t location, uint32_t offset, uint32_t size, uint32_t pitch, uint8_t comp, uint16_t base, uint8_t bank, CellPPU* ppu);
 
 void Dump();
 

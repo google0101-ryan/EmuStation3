@@ -45,6 +45,9 @@ void Modules::DoHLECall(uint32_t nid, CellPPU* ppu)
     // TODO: Change this to a lookup table
     switch (nid)
     {
+    case 0x055bd74d:
+        RETURN(CellGcm::cellGcmGetTiledPitchSize(ARG0));
+        break;
     case 0x0bae8772:
         RETURN(CellGcm::cellVideoOutConfigure(ARG0, ARG1));
         break;
@@ -78,6 +81,9 @@ void Modules::DoHLECall(uint32_t nid, CellPPU* ppu)
         break;
     case 0x4ae8d215:
         RETURN(CellGcm::cellGcmSetFlipMode(ARG0));
+        break;
+    case 0x51c9d62b:
+        printf("cellGcmSetDebugOutputLevel(%ld)\n", ARG0);
         break;
     case 0x5267cb35:
         SpinlockModule::sysSpinlockUnlock(ARG0, ppu);
@@ -126,6 +132,9 @@ void Modules::DoHLECall(uint32_t nid, CellPPU* ppu)
         break;
     case 0xb2e761d4:
         CellGcm::cellGcmResetFlipStatus();
+        break;
+    case 0xbd100dbc:
+        CellGcm::cellGcmSetTileInfo(ARG0, ARG1, ARG2, ARG3, ARG4, ARG5, ARG6, ARG7, ppu);
         break;
     case 0xe315a0b2:
         RETURN(CellGcm::cellGcmGetConfiguration(ARG0, ppu));

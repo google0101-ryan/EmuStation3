@@ -34,7 +34,7 @@ target_link_libraries(ps3 ${SDL2_LIBRARIES})
 if(MSVC)
   target_compile_options(${TARGET_NAME} PRIVATE /W4 /WX)
 else()
-  target_compile_options(${TARGET_NAME} PRIVATE -pg -O0 -mincoming-stack-boundary=3 -std=c++23)
+  target_compile_options(${TARGET_NAME} PRIVATE -pg -O3 -g -mincoming-stack-boundary=3 -std=c++23)
   target_link_options(${TARGET_NAME} PRIVATE -pg)
 endif()
 

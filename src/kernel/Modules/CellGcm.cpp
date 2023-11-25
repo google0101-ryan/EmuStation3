@@ -24,9 +24,40 @@ struct
 struct GcmInfo
 {
     uint32_t context_addr, control_addr;
+    uint32_t tiles_addr;
 } gcm_info;
 
-Result CellGcm::cellGcmInitBody(uint32_t ctxtPtr, uint32_t cmdSize, uint32_t ioSize, uint32_t ioAddrPtr, CellPPU *ppu)
+struct CellGcmTileInfo
+{
+    uint32_t tile;
+    uint32_t limit;
+    uint32_t pitch;
+    uint32_t format;
+};
+
+struct GcmTileInfo
+{
+    uint8_t location;
+    uint32_t offset;
+    uint32_t size;
+    uint32_t pitch;
+    uint32_t comp;
+    uint16_t base;
+    uint8_t bank;
+    bool bound;
+
+    CellGcmTileInfo Pack()
+    {
+        CellGcmTileInfo tile;
+        tile.tile = (location + 1) | (bank << 4) | ((offset / 0x10000) << 16) | (location << 31);
+        tile.limit = ((offset + size - 1) / 0x10000) << 16 | (location << 31);
+        tile.pitch = (pitch / 0x100) << 8;
+        tile.format = base | ((base + ((size - 1) / 0x10000)) << 13) | (comp << 26) | (1 << 30);
+        return tile;
+    }
+} tiles[15];
+
+uint32_t CellGcm::cellGcmInitBody(uint32_t ctxtPtr, uint32_t cmdSize, uint32_t ioSize, uint32_t ioAddrPtr, CellPPU *ppu)
 {
     printf("cellGcmInitBody(0x%08x, 0x%08x, 0x%08x, 0x%08x)\n", ctxtPtr, cmdSize, ioSize, ioAddrPtr);
     
@@ -58,6 +89,7 @@ Result CellGcm::cellGcmInitBody(uint32_t ctxtPtr, uint32_t cmdSize, uint32_t ioS
 
     gcm_info.context_addr = ppu->GetManager()->main_mem->Alloc(0x1000);
     gcm_info.control_addr = gcm_info.context_addr + 0x40;
+    gcm_info.tiles_addr = ppu->GetManager()->main_mem->Alloc(sizeof(CellGcmTileInfo) * 15);
 
     ppu->GetManager()->Write32(ctxtPtr, gcm_info.context_addr);
 
@@ -89,7 +121,7 @@ struct VideoOutState
     CellVideoOutDisplayMode displayMode;
 } videoState;
 
-CellGcm::CellVideoOutError CellGcm::cellVideOutGetState(uint32_t videoOut, uint32_t deviceIndex, uint32_t statePtr, CellPPU* ppu)
+uint32_t CellGcm::cellVideOutGetState(uint32_t videoOut, uint32_t deviceIndex, uint32_t statePtr, CellPPU* ppu)
 {
     printf("cellVideoOutGetState(%d, %d, 0x%08x)\n", videoOut, deviceIndex, statePtr);
 
@@ -115,17 +147,17 @@ CellGcm::CellVideoOutError CellGcm::cellVideOutGetState(uint32_t videoOut, uint3
         ppu->GetManager()->Write8(statePtr+offsetof(VideoOutState, displayMode)+offsetof(CellVideoOutDisplayMode, aspect), 0x02);
         ppu->GetManager()->Write16(statePtr+offsetof(VideoOutState, displayMode)+offsetof(CellVideoOutDisplayMode, refreshRates), 0x01);
 
-        return (CellVideoOutError)CELL_OK;
+        return CELL_OK;
     }
     case CELL_VIDEO_OUT_SECONDARY:
         ppu->GetManager()->Write8(statePtr+offsetof(VideoOutState, state), CELL_VIDEO_OUT_OUTPUT_STATE_DISABLED);
-        return (CellVideoOutError)CELL_OK;
+        return CELL_OK;
     }
 
     return CELL_VIDEO_OUT_ERROR_UNSUPPORTED_VIDEO_OUT;
 }
 
-CellGcm::CellVideoOutError CellGcm::cellGetResolution(uint32_t resId, uint32_t resPtr, CellPPU* ppu)
+uint32_t CellGcm::cellGetResolution(uint32_t resId, uint32_t resPtr, CellPPU* ppu)
 {
     uint16_t width, height;
 
@@ -150,25 +182,25 @@ CellGcm::CellVideoOutError CellGcm::cellGetResolution(uint32_t resId, uint32_t r
     ppu->GetManager()->Write16(resPtr, width);
     ppu->GetManager()->Write16(resPtr+2, height);
 
-    return (CellVideoOutError)CELL_OK;
+    return CELL_OK;
 }
 
-Result CellGcm::cellVideoOutConfigure(uint32_t videoOut, uint32_t configPtr)
+uint32_t CellGcm::cellVideoOutConfigure(uint32_t videoOut, uint32_t configPtr)
 {
     printf("TODO: cellVideoOutConfigure(0x%08x, 0x%08x)\n", videoOut, configPtr);
     return CELL_OK;
 }
 
-Result CellGcm::cellGcmSetFlipMode(int mode)
+uint32_t CellGcm::cellGcmSetFlipMode(int mode)
 {
     printf("cellGcmSetFlipMode(%d)\n", mode);
 
     return CELL_OK;
 }
 
-Result CellGcm::cellGcmGetConfiguration(uint32_t configPtr, CellPPU* ppu)
+uint32_t CellGcm::cellGcmGetConfiguration(uint32_t configPtr, CellPPU* ppu)
 {
-    printf("cellGcmGetConfiguration(0x%08lx)\n", configPtr);
+    printf("cellGcmGetConfiguration(0x%08x)\n", configPtr);
 
     ppu->GetManager()->Write32(configPtr, config.localAddress);
     ppu->GetManager()->Write32(configPtr+4, config.ioAddress);
@@ -180,7 +212,7 @@ Result CellGcm::cellGcmGetConfiguration(uint32_t configPtr, CellPPU* ppu)
     return CELL_OK;
 }
 
-Result CellGcm::cellGcmAddressToOffset(uint32_t address, uint32_t offsPtr, CellPPU* ppu)
+uint32_t CellGcm::cellGcmAddressToOffset(uint32_t address, uint32_t offsPtr, CellPPU* ppu)
 {
     printf("cellGcmAddressToOffset(0x%08x, 0x%08x)\n", address, offsPtr);
 
@@ -203,7 +235,7 @@ Result CellGcm::cellGcmAddressToOffset(uint32_t address, uint32_t offsPtr, CellP
     return CELL_OK;
 }
 
-Result CellGcm::cellGcmSetDisplayBuffer(uint8_t bufId, uint32_t offset, uint32_t pitch, uint32_t width, uint32_t height, CellPPU *ppu)
+uint32_t CellGcm::cellGcmSetDisplayBuffer(uint8_t bufId, uint32_t offset, uint32_t pitch, uint32_t width, uint32_t height, CellPPU *ppu)
 {
     printf("cellGcmSetDisplayBuffer(%d, 0x%08x, 0x%08x, %d, %d)\n", bufId, offset, pitch, width, height);
     rsx->SetFramebuffer(bufId, offset, pitch, width, height);
@@ -261,4 +293,65 @@ uint32_t CellGcm::cellGcmGetFlipStatus()
 void CellGcm::cellGcmResetFlipStatus()
 {
     rsx->GetFlipped() = false;
+}
+
+const uint32_t tiled_pitches[] = 
+{
+	0x00000000, 0x00000200, 0x00000300, 0x00000400,
+	0x00000500, 0x00000600, 0x00000700, 0x00000800,
+	0x00000A00, 0x00000C00, 0x00000D00, 0x00000E00,
+	0x00001000, 0x00001400, 0x00001800, 0x00001A00,
+	0x00001C00, 0x00002000, 0x00002800, 0x00003000,
+	0x00003400, 0x00003800, 0x00004000, 0x00005000,
+	0x00006000, 0x00006800, 0x00007000, 0x00008000,
+	0x0000A000, 0x0000C000, 0x0000D000, 0x0000E000,
+	0x00010000
+};
+
+uint32_t CellGcm::cellGcmGetTiledPitchSize(uint32_t size)
+{
+    printf("cellGcmGetTiledPitchSize(%d)\n", size);
+
+    for (size_t i = 0; i < std::size(tiled_pitches) - 1; i++)
+    {
+        if (tiled_pitches[i] < size && size <= tiled_pitches[i+1])
+            return tiled_pitches[i+1];
+    }
+
+    return 0;
+}
+
+uint32_t CellGcm::cellGcmSetTileInfo(uint8_t index, uint8_t location, uint32_t offset, uint32_t size, uint32_t pitch, uint8_t comp, uint16_t base, uint8_t bank, CellPPU* ppu)
+{
+    printf("cellGcmSetTileInfo(%d, %d, %d, %d, %d, %d, %d, %d)\n", index, location, offset, size, pitch, comp, base, bank);
+    
+    if (index >= 15 || base >= 800 || bank >= 4)
+        return CELL_GCM_ERROR_INVALID_VALUE;
+    
+    if (offset & 0xffff || size & 0xffff || pitch & 0xf)
+        return CELL_GCM_ERROR_INVALID_ALIGNMENT;
+    
+    if (location >= 2 || (comp != 0 && (comp < 7 || comp > 12)))
+        return CELL_GCM_ERROR_INVALID_ENUM;
+    
+    if (comp)
+    {
+        printf("TODO: Compression of tile info!\n");
+        exit(1);
+    }
+
+    auto& tile = tiles[index];
+    tile.location = location;
+    tile.offset = offset;
+    tile.size = size;
+    tile.pitch = pitch;
+    tile.comp = comp;
+    tile.base = base;
+    tile.bank = bank;
+    auto tileData = tile.Pack();
+
+    ppu->GetManager()->Write32((gcm_info.tiles_addr + sizeof(CellGcmTileInfo) * index), tileData.tile);
+    ppu->GetManager()->Write32((gcm_info.tiles_addr + sizeof(CellGcmTileInfo) * index)+4, tileData.limit);
+    ppu->GetManager()->Write32((gcm_info.tiles_addr + sizeof(CellGcmTileInfo) * index)+8, tileData.pitch);
+    ppu->GetManager()->Write32((gcm_info.tiles_addr + sizeof(CellGcmTileInfo) * index)+12, tileData.format);
 }

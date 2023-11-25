@@ -10,24 +10,36 @@
 RSX rsxLocal;
 RSX* rsx = &rsxLocal;
 
+uint32_t start_time, frame_time;
+
 void RSX::Init()
 {
     SDL_Init(SDL_INIT_EVERYTHING);
-    window = SDL_CreateWindow("PS3", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1920, 1080, 0);
+    window = SDL_CreateWindow("PS3", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1920 / 2, 1080 / 2, 0);
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-    texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STATIC, 1920, 1080);
+    texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STREAMING, 1920, 1080);
+
+    start_time = SDL_GetTicks();
 }
 
 void RSX::Present()
 {
     if (!framebuffer) return;
 
-    SDL_UpdateTexture(texture, NULL, framebuffer, colorPitch);
+    SDL_UpdateTexture(texture, NULL, framebuffer, framebuffers[0].pitch);
     SDL_RenderCopy(renderer, texture, NULL, NULL);
     SDL_RenderPresent(renderer);
 
     flipped = true;
-    printf("Drawing screen\n");
+
+    frame_time = SDL_GetTicks() - start_time;
+    float fps = (frame_time > 0) ? 1000.0f / frame_time : 0.0f;
+
+    start_time = SDL_GetTicks();
+
+    static char buf[4096];
+    snprintf(buf, 4096, "PS3 - %f fps", fps);
+    SDL_SetWindowTitle(window, buf);
 }
 
 void RSX::SetFramebuffer(int id, uint32_t offset, uint32_t pitch, uint32_t width, uint32_t height)
@@ -234,14 +246,15 @@ void RSX::DoCmd(uint32_t fullCmd, uint32_t cmd, std::vector<uint32_t> &args, int
         break;
     case 0x1814:
     {
-        vec4 vertices[3];
+        Vertex vertices[3];
         printf("NV40TCL_DRAW(0x%08x)\n", args[0]);
         assert(((args[0] >> 24) & 0xff)+1 == 3);
         for (int i = 0; i < ((args[0] >> 24) & 0xff)+1; i++)
         {
             vpe.SetIndex(i);
             vpe.DoVertexShader(manager);
-            vertices[i] = vpe.GetOutputPos();
+            vertices[i].pos = vpe.GetOutputPos();
+            vertices[i].color = vpe.GetOutputColor();
         }
 
         // Draw a triangle to the framebuffer
@@ -323,12 +336,15 @@ void RSX::ClearFramebuffers(uint32_t mask)
         colorMask &= ~0xFF0000; // Clear the G component
     if (mask & (1 << 4))
         colorMask &= ~0xFF000000; // Clear the R component
+
+    uint32_t color = (clearColor.r << 24) | (clearColor.g << 16) | (clearColor.b << 8) | (clearColor.a);
     
     for (uint32_t y = 0; y < framebuffers[0].height; y++)
     {
         for (uint32_t x = 0; x < framebuffers[0].width; x++)
         {
             *(uint32_t*)&framebuffer[(x*4) + (y * colorPitch)] &= colorMask;
+            *(uint32_t*)&framebuffer[(x*4) + (y * colorPitch)] |= color & ~colorMask;
             *(uint32_t*)&depthBuffer[(x*4) + (y * zPitch)] &= depthMask;
         }
     }
@@ -341,8 +357,10 @@ float orient2d(vec4& v1, vec4& v2, vec4& v3)
     return (v2.x - v1.x) * (v3.y - v1.y) - (v3.x - v1.x) * (v2.y - v1.y);
 }
 
-void RSX::DrawTriangle(vec4 p0, vec4 p1, vec4 p2)
+void RSX::DrawTriangle(Vertex v0, Vertex v1, Vertex v2)
 {
+    auto p0 = v0.pos, p1 = v1.pos, p2 = v2.pos;
+
     if (orient2d(p0, p1, p2) < 0)
         std::swap(p1, p2);
     
@@ -365,7 +383,22 @@ void RSX::DrawTriangle(vec4 p0, vec4 p1, vec4 p2)
     int32_t w2_row = orient2d(p2, p0, min_corner);
     int32_t w3_row = orient2d(p0, p1, min_corner);
 
+    int r1 = v0.color.x;
+    int r2 = v1.color.x;
+    int r3 = v2.color.x;
+
+    int g1 = v0.color.y;
+    int g2 = v1.color.y;
+    int g3 = v2.color.y;
+
+    int b1 = v0.color.z;
+    int b2 = v1.color.z;
+    int b3 = v2.color.z;
+
+    int32_t divider = orient2d(p0, p1, p2);
+
     printf("Drawing triangle at (%f, %f), (%f, %f), (%f, %f)\n", p0.x, p0.y, p1.x, p1.y, p2.x, p2.y);
+    printf("(%d, %d, %d) (%d, %d, %d) (%d, %d, %d)\n", r1, g1, b1, r2, g2, b2, r3, g3, b3);
 
     for (int32_t y = min_y; y <= max_y; y++)
     {
@@ -377,7 +410,19 @@ void RSX::DrawTriangle(vec4 p0, vec4 p1, vec4 p2)
         {
             if ((w1 | w2 | w3) >= 0)
             {
-                *(uint32_t*)&framebuffer[x + (y*1920)] = 0xFFFFFF;
+                uint32_t pos = (x + (y*1920))*4;
+                int r = ((float)r1 * w1 + (float)r2 * w2 + (float)r3 * w3) / divider;
+                int g = ((float)g1 * w1 + (float)g2 * w2 + (float)g3 * w3) / divider;
+                int b = ((float)b1 * w1 + (float)b2 * w2 + (float)b3 * w3) / divider;
+                uint32_t color = 0;
+                if (r_mask)
+                    color |= (r << 24);
+                if (g_mask)
+                    color |= (g << 16);
+                if (b_mask)
+                    color |= (b << 8);
+                color |= 0xFF;
+                *(uint32_t*)&framebuffer[pos] = color;
             }
             w1 += A23;
             w2 += A31;

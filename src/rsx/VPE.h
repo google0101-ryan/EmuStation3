@@ -127,6 +127,7 @@ public:
     void SetIndex(int i) {vtx_index = i;}
 
     vec4 GetOutputPos() {return dest[0];}
+    vec4 GetOutputColor() {return dest[1];}
 private:
     MemoryManager* manager;
     int vtx_index;

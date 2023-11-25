@@ -526,6 +526,9 @@ void CellPPU::G_1F(uint32_t opcode)
     case 0x000:
         Cmp(opcode);
         break;
+    case 0x00B:
+        Mulhwu(opcode);
+        break;
     case 0x013:
         Mfcr(opcode);
         break;
@@ -556,14 +559,26 @@ void CellPPU::G_1F(uint32_t opcode)
     case 0x068:
         Neg(opcode);
         break;
+    case 0x0CA:
+        Addze(opcode);
+        break;
     case 0x07C:
         Nor(opcode);
         break;
     case 0x090:
         Mtocrf(opcode);
         break;
+    case 0x095:
+        Stdx(opcode);
+        break;
+    case 0x097:
+        Stwx(opcode);
+        break;
     case 0x0E7:
         Stvx(opcode);
+        break;
+    case 0xE9:
+        Mulld(opcode);
         break;
     case 0x0EB:
         Mullw(opcode);
@@ -584,11 +599,17 @@ void CellPPU::G_1F(uint32_t opcode)
     case 0x1BC:
         Or(opcode);
         break;
+    case 0x1C9:
+        Divdu(opcode);
+        break;
     case 0x1CB:
         Divwu(opcode);
         break;
     case 0x1D3:
         Mtspr(opcode);
+        break;
+    case 0x1E9:
+        Divd(opcode);
         break;
     case 0x218:
         Srw(opcode);
@@ -600,6 +621,7 @@ void CellPPU::G_1F(uint32_t opcode)
     case 0x338:
         Srawi(opcode);
         break;
+    case 0x33A:
     case 0x33B:
         Sradi(opcode);
         break;
@@ -629,6 +651,22 @@ void CellPPU::Cmp(uint32_t opcode)
 
     if (canDisassemble)
         printf("cmp%s cr%d,r%d,r%d\n", !l ? "w" : "d", bf, ra, rb);
+}
+
+void CellPPU::Mulhwu(uint32_t opcode)
+{
+    int ra = ra_d;
+    int rb = rb_d;
+    int rt = rt_d;
+
+    uint32_t a = r[ra];
+    uint32_t b = r[rb];
+    r[rt] = ((uint64_t)a * (uint64_t)b) >> 32;
+    if (opcode & 1)
+        UpdateCR0<int32_t>(r[rt]);
+    
+    if (canDisassemble)
+        printf("mulhwu r%d,r%d,r%d\n", rt, ra, rb);
 }
 
 void CellPPU::Mfcr(uint32_t opcode)
@@ -882,6 +920,30 @@ void CellPPU::Mtocrf(uint32_t opcode)
     }
 }
 
+void CellPPU::Stdx(uint32_t opcode)
+{
+    int rs = rs_d;
+    int ra = ra_d;
+    int rb = rb_d;
+
+    manager.Write64((ra ? r[ra] + r[rb] : r[rb]), r[rs]);
+
+    if (canDisassemble)
+        printf("stdx r%d, r%d(r%d)\n", rs, ra, rb);
+}
+
+void CellPPU::Stwx(uint32_t opcode)
+{
+    int rs = rs_d;
+    int ra = ra_d;
+    int rb = rb_d;
+
+    manager.Write32((ra ? r[ra] + r[rb] : r[rb]), r[rs]);
+
+    if (canDisassemble)
+        printf("stwx r%d, r%d(r%d)\n", rs, ra, rb);
+}
+
 void CellPPU::Addze(uint32_t opcode)
 {
     if ((opcode >> 10) & 1)
@@ -900,9 +962,7 @@ void CellPPU::Addze(uint32_t opcode)
 
     if (opcode & 1)
     {
-        if ((int64_t)r[rt] < 0) cr.cr0 = 8;
-        else if ((int64_t)r[rt] > 0) cr.cr0 = 4;
-        else if (r[rt] == 0) cr.cr0 = 2;
+        UpdateCR0<int64_t>(r[rt]);
         if (canDisassemble)
             printf("addze. r%d,r%d\n", rt, ra);
     }
@@ -921,6 +981,29 @@ void CellPPU::Stvx(uint32_t opcode)
 
     if (canDisassemble)
         printf("stvx v%d,r%d,r%d\n", vs, ra, rb);
+}
+
+void CellPPU::Mulld(uint32_t opcode)
+{
+    int rt = rt_d;
+    int ra = ra_d;
+    int rb = rb_d;
+    bool oe = (opcode >> 10) & 1;
+    bool rc = opcode & 1;
+
+    r[rt] = r[rb] * r[ra];
+
+    if (oe)
+    {
+        printf("TODO: Mullwo/Mullwo.\n");
+        exit(1);
+    }
+
+    if (rc)
+        UpdateCR0<int64_t>(r[rt]);
+
+    if (canDisassemble)
+        printf("mulld%s r%d,r%d,r%d\n", rc ? "." : "", rt, ra, rb);
 }
 
 void CellPPU::Mullw(uint32_t opcode)
@@ -1041,6 +1124,34 @@ void CellPPU::Or(uint32_t opcode)
     }
 }
 
+void CellPPU::Divdu(uint32_t opcode)
+{
+    bool oe = (opcode >> 10) & 1;
+    bool rc = opcode & 1;
+    int rt = rt_d;
+    int ra = ra_d;
+    int rb = rb_d;
+
+    const uint64_t RA = r[ra];
+    const uint64_t RB = r[rb];
+
+    if (!RB)
+    {
+        if (oe) {printf("divduo\n"); exit(1);}
+        r[rt] = 0;
+    }
+    else
+    {
+        r[rt] = RA / RB;
+    }
+
+    if (rc)
+        UpdateCR0<int64_t>(r[rt]);
+    
+    if (canDisassemble)
+        printf("divdu r%d,r%d,r%d\n", rt, ra, rb);
+}
+
 void CellPPU::Divwu(uint32_t opcode)
 {
     int rt = rt_d;
@@ -1080,6 +1191,39 @@ void CellPPU::Mtspr(uint32_t opcode)
 
     if (canDisassemble)
         printf("mtspr r%d,%s\n", rs, name.c_str());
+}
+
+void CellPPU::Divd(uint32_t opcode)
+{
+    int rt = rt_d;
+    int ra = ra_d;
+    int rb = rb_d;
+    bool rc = opcode & 1;
+    bool oe = (opcode >> 10) & 1;
+
+    if (oe)
+    {
+        printf("TODO: DIVDO/DIVDO.\n");
+        exit(1);
+    }
+
+    const int64_t RA = r[ra];
+    const int64_t RB = r[rb];
+
+    if (RB == 0 || ((uint64_t)RA == (1ULL << 63) && RB == -1))
+    {
+        r[rt] = (((uint64_t)RA & (1ULL << 63) && RB == 0)) ? -1 : 0;
+    }
+    else
+    {
+        r[rt] = RA / RB;
+    }
+
+    if (rc)
+        UpdateCR0<int64_t>(r[rt]);
+    
+    if (canDisassemble)
+        printf("divd r%d,r%d,r%d\n", rt, ra, rb);
 }
 
 void CellPPU::Srw(uint32_t opcode)

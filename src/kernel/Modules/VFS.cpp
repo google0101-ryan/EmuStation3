@@ -55,7 +55,7 @@ const char* GetMountPoint(const char*& path)
     return mntPoints[index].base.c_str();
 }
 
-Result VFS::cellFsOpen(uint32_t namePtr, int32_t oflags, uint32_t fdPtr, CellPPU *ppu)
+uint32_t VFS::cellFsOpen(uint32_t namePtr, int32_t oflags, uint32_t fdPtr, CellPPU *ppu)
 {
     const char* name = (char*)ppu->GetManager()->GetRawPtr(namePtr);
     
@@ -82,7 +82,7 @@ Result VFS::cellFsOpen(uint32_t namePtr, int32_t oflags, uint32_t fdPtr, CellPPU
     return CELL_OK;
 }
 
-Result VFS::cellFsSeek(uint32_t fd, uint32_t offs, uint32_t whence, uint32_t offsPtr, CellPPU* ppu)
+uint32_t VFS::cellFsSeek(uint32_t fd, uint32_t offs, uint32_t whence, uint32_t offsPtr, CellPPU* ppu)
 {
     printf("cellFsSeekl(%d, %d, %d, 0x%08lx)\n", fd, offs, whence, offsPtr);
 
@@ -92,7 +92,7 @@ Result VFS::cellFsSeek(uint32_t fd, uint32_t offs, uint32_t whence, uint32_t off
     return CELL_OK;
 }
 
-Result VFS::cellFsWrite(uint32_t fd, uint32_t bufPtr, uint32_t size, uint32_t writtenPtr, CellPPU *ppu)
+uint32_t VFS::cellFsWrite(uint32_t fd, uint32_t bufPtr, uint32_t size, uint32_t writtenPtr, CellPPU *ppu)
 {
     printf("cellFsWrite(%d, 0x%08x, %d, 0x%08x)\n", fd, bufPtr, size, writtenPtr);
 
@@ -100,7 +100,7 @@ Result VFS::cellFsWrite(uint32_t fd, uint32_t bufPtr, uint32_t size, uint32_t wr
     return CELL_OK;
 }
 
-Result VFS::cellFsClose(uint32_t fd)
+uint32_t VFS::cellFsClose(uint32_t fd)
 {
     printf("cellFsClose(%d)\n", fd);
     fds[fd] = NULL;

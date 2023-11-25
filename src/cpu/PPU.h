@@ -177,6 +177,7 @@ private:
     void Rldimi(uint32_t opcode); // 0x1E 0x03
     void G_1F(uint32_t opcode); // 0x1F
     void Cmp(uint32_t opcode); // 0x1F 0x00
+    void Mulhwu(uint32_t opcode); // 0x1F 0x0B
     void Mfcr(uint32_t opcode); // 0x1F 0x13
     void Lwzx(uint32_t opcode); // 0x1F 0x17
     void Slw(uint32_t opcode); // 0x1F 0x18
@@ -189,15 +190,20 @@ private:
     void Neg(uint32_t opcode); // 0x1F 0x68
     void Nor(uint32_t opcode); // 0x1F 0x7C
     void Mtocrf(uint32_t opcode); // 0x1F 0x90
+    void Stdx(uint32_t opcode); // 0x1F 0x95
+    void Stwx(uint32_t opcode); // 0x1F 0x97
     void Addze(uint32_t opcode); // 0x1F 0xCA
     void Stvx(uint32_t opcode); // 0x1F 0xE7
+    void Mulld(uint32_t opcode); // 0x1F 0xE9
     void Mullw(uint32_t opcode); // 0x1F 0xEB
     void Add(uint32_t opcode); // 0x1F 0x10A
     void Xor(uint32_t opcode); // 0x1F 0x13C
     void Mfspr(uint32_t opcode); // 0x1F 0x153
     void Or(uint32_t opcode); // 0x1F 0x1BC
+    void Divdu(uint32_t opcode); // 0x1F 0x1C9
     void Divwu(uint32_t opcode); // 0x1F 0x1CB
     void Mtspr(uint32_t opcode); // 0x1F 0x1D3
+    void Divd(uint32_t opcode); // 0x1F 0x1E9
     void Srw(uint32_t opcode); // 0x1F 0x218
     void Srawi(uint32_t opcode); // 0x1F 0x338
     void Sradi(uint32_t opcode); // 0x1F 0x19D & 0x1F 0x33D

@@ -3,7 +3,7 @@
 
 #include <stdio.h>
 
-Result sysMMapperAllocateMemory(size_t size, uint64_t flags, size_t alignment, uint64_t ptrAddr, CellPPU* ppu)
+uint32_t sysMMapperAllocateMemory(size_t size, uint64_t flags, size_t alignment, uint64_t ptrAddr, CellPPU* ppu)
 {
     printf("sysMMapperAllocateMemory(0x%08lx, 0x%08lx, 0x%08lx, 0x%08lx)\n", size, flags, alignment, ptrAddr);
 
@@ -37,7 +37,7 @@ Result sysMMapperAllocateMemory(size_t size, uint64_t flags, size_t alignment, u
     return CELL_OK;
 }
 
-Result sysGetUserMemorySize(uint64_t mem_info_addr, CellPPU* ppu)
+uint32_t sysGetUserMemorySize(uint64_t mem_info_addr, CellPPU* ppu)
 {
     ppu->GetManager()->Write32(mem_info_addr, ppu->GetManager()->main_mem->GetSize());
     ppu->GetManager()->Write32(mem_info_addr, ppu->GetManager()->main_mem->GetAvailable());
@@ -46,7 +46,7 @@ Result sysGetUserMemorySize(uint64_t mem_info_addr, CellPPU* ppu)
     return CELL_OK;
 }
 
-Result sysMMapperAllocate(uint32_t size, uint32_t flags, uint32_t alloc_addr, CellPPU* ppu)
+uint32_t sysMMapperAllocate(uint32_t size, uint32_t flags, uint32_t alloc_addr, CellPPU* ppu)
 {
     printf("sysMMapperAllocate(0x%08x, 0x%08x, 0x%08x)\n", size, flags, alloc_addr);
 
