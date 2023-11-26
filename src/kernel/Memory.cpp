@@ -7,6 +7,8 @@
 #include <format>
 #include <cstring>
 #include <fstream>
+#include <rsx/rsx.h>
+#include <kernel/Modules/CellGcm.h>
 
 #define PAGE_SIZE (64*1024)
 
@@ -55,6 +57,11 @@ void MemoryManager::MapMemory(uint64_t start, uint64_t end, uint8_t *ptr)
     }
 }
 
+void MemoryManager::SetRSXControlReg(uint64_t addr)
+{
+    rsx_control_addr = addr;
+}
+
 uint8_t* MemoryManager::GetRawPtr(uint64_t offs)
 {
     return pages[offs / PAGE_SIZE] + (offs % PAGE_SIZE);
@@ -63,7 +70,7 @@ uint8_t* MemoryManager::GetRawPtr(uint64_t offs)
 void MemoryManager::DumpRam()
 {
     std::ofstream out("mem.bin");
-    out.write((char*)main_mem->data, 0x100000);
+    out.write((char*)main_mem->data, 0x200000);
     out.close();
     
     out.open("stack.bin");
@@ -71,7 +78,7 @@ void MemoryManager::DumpRam()
     out.close();
 
     out.open("rsx_cmd.bin");
-    out.write((char*)main_mem->data+0xF0000, 0x6FFC);
+    out.write((char*)main_mem->data+0x00200000, 0x7000);
     out.close();
 
     out.open("rsxfbmem.bin");
@@ -139,6 +146,14 @@ void MemoryManager::Write32(uint64_t addr, uint32_t data, bool slow)
     else
     {
         throw std::runtime_error(std::format("Error: Write64 {:#04x} to unknown addr {:#010x}", data, addr));
+    }
+    
+    if (rsx_control_addr && addr == rsx_control_addr)
+    {
+        uint32_t get = Read32(addr+4);
+        if (data != get)
+            rsx->DoCommands(GetRawPtr(CellGcm::GetIOAddres() + get), data - get);
+        return;
     }
 }
 

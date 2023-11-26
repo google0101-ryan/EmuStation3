@@ -28,7 +28,7 @@ CellPPU::CellPPU(uint64_t entry, uint64_t ret_addr, MemoryManager& manager)
     //     if (i != 6)
     //         r[i] = (i+1) * 0x10000;
 
-    uint64_t sp = manager.stack->Alloc(0x10000) + 0x10000;
+    sp = manager.stack->Alloc(0x10000) + 0x10000;
     r[1] = sp;
     r[2] = manager.Read32(entry+4);
 
@@ -74,10 +74,28 @@ CellPPU::CellPPU(uint64_t entry, uint64_t ret_addr, MemoryManager& manager)
 void CellPPU::Run()
 {
     uint32_t opcode = manager.Read32(pc);
+
+    if (pc == 0x16264)
+    {
+        printf("cellGcmFinish(0x%08x, %d)\n", r[3], r[4]);
+    }
+
+    if (pc == 0x162E4)
+    {
+        printf("cellGcmSetReferenceCommand(0x%08x, %d)\n", r[3], r[4]);
+        printf("0x%08x\n", manager.Read32(r[3] + 8));
+        canDisassemble = true;
+    }
+
+    if (pc == 0x16348)
+    {
+        canDisassemble = false;
+    }
+
     pc += 4;
 
     if (canDisassemble)
-        printf("0x%02x: ", (opcode >> 26) & 0x3F);
+        printf("0x%02x (0x%08lx): ", (opcode >> 26) & 0x3F, pc);
 
     if (opcode == 0x60000000)
     {
@@ -87,6 +105,7 @@ void CellPPU::Run()
     }
     else if (opcode == 0x44000002)
     {
+        printf("syscall\n");
         Syscalls::DoSyscall(this);
         return;
     }

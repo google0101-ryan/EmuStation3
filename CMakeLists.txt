@@ -16,6 +16,7 @@ set(SOURCES src/main.cpp
             src/kernel/Modules/CellGcm.cpp
             src/kernel/Modules/CellThread.cpp
             src/kernel/Modules/VFS.cpp
+            src/kernel/Modules/CellHeap.cpp
             src/kernel/Syscall.cpp
             src/loaders/Elf.cpp)
 

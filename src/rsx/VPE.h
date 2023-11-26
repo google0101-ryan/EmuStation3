@@ -56,11 +56,11 @@ struct VertexBinding
         }
     }
 
-    void SetU8(uint8_t* vec)
+    void SetU8(uint8_t* _vec)
     {
         assert(dtype == GCM_VERTEX_DATA_TYPE_U8);
         for (int i = 0; i < elems; i++)
-            this->u8[i] = vec[i];
+            this->u8[i] = _vec[i];
     }
 };
 

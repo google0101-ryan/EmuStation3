@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <array>
 
+#define printf(x, ...) 0
+
 int bitExtract(int number, int p, int k)
 {
     int mask = 0;
@@ -381,6 +383,7 @@ vec4 VertexShader::read_location(int index, std::string& disasm)
             ret.z = (float&)tmp;
             tmp = BINDING_LOCATION(12);
             ret.w = (float&)tmp;
+            printf("(%f, %f, %f, %f)\n", ret.x, ret.y, ret.z, ret.w);
         }
         else if (binding.elems == 3)
         {
@@ -391,6 +394,17 @@ vec4 VertexShader::read_location(int index, std::string& disasm)
             tmp = BINDING_LOCATION(8);
             ret.z = (float&)tmp;
             ret.w = 0.0f;
+            printf("(%f, %f, %f)\n", ret.x, ret.y, ret.z);
+        }
+        else if (binding.elems == 2)
+        {
+            uint32_t tmp = BINDING_LOCATION(0);
+            ret.x = (float&)tmp;
+            tmp = BINDING_LOCATION(4);
+            ret.y = (float&)tmp;
+            ret.z = 0.0f;
+            ret.w = 0.0f;
+            printf("%f, %f\n", ret.x, ret.y);
         }
         else
         {
@@ -465,13 +479,12 @@ void VertexShader::write_vec(vec4 value, std::string& disasm)
         std::array<std::string, 16> outputNames =
         {
             "out_pos",
-            "out_weight",
-            "out_normal",
-            "out_color0",
-            "out_color1",
-            "out_fog",
-            "out_color_index",
-            "out_edgeflag",
+            "out_col0",
+            "out_col1",
+            "out_bfc0",
+            "out_bfc1",
+            "out_clipDistance[0]",
+            "out_clipDistance[1]",
             "out_tex0",
             "out_tex1",
             "out_tex2",

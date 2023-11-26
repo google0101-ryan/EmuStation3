@@ -185,7 +185,7 @@ void CellPPU::Addi(uint32_t opcode)
 
     r[rt] = ra ? ((int64_t)r[ra] + si) : si;
 
-    if constexpr (canDisassemble)
+    if (canDisassemble)
     {
         if (!ra)
             printf("li r%d, 0x%04lx\n", rt, si);
@@ -268,6 +268,9 @@ void CellPPU::G_13(uint32_t opcode)
     case 0x010:
         Bclr(opcode);
         break;
+    case 0x1C1:
+        Cror(opcode);
+        break;
     case 0x210:
         Bcctr(opcode);
         break;
@@ -301,6 +304,18 @@ void CellPPU::Bclr(uint32_t opcode)
         if (canDisassemble)
             printf("[taken]\n");
     }
+}
+
+void CellPPU::Cror(uint32_t opcode)
+{
+    int crbt = rt_d;
+    int crba = ra_d;
+    int crbb = rb_d;
+
+    const uint8_t v = IsCR(crba) | IsCR(crbb);
+    SetCRBit2(crbt, v & 1);
+    if (canDisassemble)
+        printf("cror cr%d,cr%d,cr%d\n", crbt, crba, crbb);
 }
 
 void CellPPU::Bcctr(uint32_t opcode)
@@ -480,7 +495,7 @@ void CellPPU::Rldicr(uint32_t opcode)
     if (rc)
         UpdateCR0<int64_t>(r[ra]);
 
-    if constexpr (canDisassemble)
+    if (canDisassemble)
         printf("rldicr%s r%d, r%d, %d, %d (0x%08lx)\n", rc ? "." : "", ra, rs, sh, me, rotate_mask[0][me]);
 }
 
@@ -526,6 +541,9 @@ void CellPPU::G_1F(uint32_t opcode)
     case 0x000:
         Cmp(opcode);
         break;
+    case 0x009:
+        Mulhdu(opcode);
+        break;
     case 0x00B:
         Mulhwu(opcode);
         break;
@@ -540,6 +558,9 @@ void CellPPU::G_1F(uint32_t opcode)
         break;
     case 0x01A:
         Cntlzw(opcode);
+        break;
+    case 0x01B:
+        Sld(opcode);
         break;
     case 0x01C:
         And(opcode);
@@ -611,12 +632,21 @@ void CellPPU::G_1F(uint32_t opcode)
     case 0x1E9:
         Divd(opcode);
         break;
+    case 0x1EB:
+        Divw(opcode);
+        break;
+    case 0x217:
+        Lfsx(opcode);
+        break;
     case 0x218:
         Srw(opcode);
         break;
     case 0x256:
         if (canDisassemble)
             printf("sync\n");
+        break;
+    case 0x297:
+        Stfsx(opcode);
         break;
     case 0x338:
         Srawi(opcode);
@@ -631,12 +661,15 @@ void CellPPU::G_1F(uint32_t opcode)
     case 0x3BA:
         Extsb(opcode);
         break;
+    case 0x3D7:
+        Stfiwx(opcode);
+        break;
     case 0x3DA:
         Extsw(opcode);
         break;
     default:
         printf(std::format("Unhandled opcode ({:#x}) ({:#x})\n", field, opcode).c_str());
-        exit(1);
+        throw std::runtime_error("Unable to execute Group 1F opcode");
     }
 }
 
@@ -651,6 +684,25 @@ void CellPPU::Cmp(uint32_t opcode)
 
     if (canDisassemble)
         printf("cmp%s cr%d,r%d,r%d\n", !l ? "w" : "d", bf, ra, rb);
+}
+
+uint64_t mulhi64(uint64_t a, uint64_t b) 
+{
+    unsigned __int128 prod =  a * (unsigned __int128)b;
+    return prod >> 64;
+ }
+
+void CellPPU::Mulhdu(uint32_t opcode)
+{
+    int rt = rt_d;
+    int ra = ra_d;
+    int rb = rb_d;
+
+    r[rt] = mulhi64(r[ra], r[rb]);
+    if (opcode & 1)
+        UpdateCR0<int64_t>(r[rt]);
+    if (canDisassemble)
+        printf("mulhdu r%d,r%d,r%d\n", rt, ra, rb);
 }
 
 void CellPPU::Mulhwu(uint32_t opcode)
@@ -757,6 +809,25 @@ void CellPPU::Cntlzw(uint32_t opcode)
         printf("cntlzw r%d,r%d (%d)\n", ra, rs, i);
 }
 
+void CellPPU::Sld(uint32_t opcode)
+{
+    int ra = ra_d;
+    int rs = rs_d;
+    int rb = rb_d;
+    bool rc = opcode & 1;
+
+    uint32_t n = r[rb] & 0x3f;
+    uint64_t r_ = rotl64(r[rs], n);
+    uint64_t m = (r[rb] & 0x40) ? 0 : rotate_mask[0][63 - n];
+
+    r[ra] = r_ & m;
+
+    if (rc)
+        UpdateCR0<int64_t>(r[ra]);
+    if (canDisassemble)
+        printf("sld r%d,r%d,r%d\n", ra, rs, rb);
+}
+
 void CellPPU::And(uint32_t opcode)
 {
     int rs = rs_d;
@@ -780,9 +851,9 @@ void CellPPU::Subf(uint32_t opcode)
         exit(1);
     }
 
-    int rt = ((opcode >> 21) & 0x1F);
-    int ra = ((opcode >> 16) & 0x1F);
-    int rb = ((opcode >> 11) & 0x1F);
+    int rt = rt_d;
+    int ra = ra_d;
+    int rb = rb_d;
     bool rc = opcode & 1;
 
     r[rt] = r[rb] - r[ra];
@@ -835,13 +906,13 @@ void CellPPU::Cmpl(uint32_t opcode)
 {
     uint8_t bf = (opcode >> 23) & 0x7;
     bool l = (opcode >> 21) & 1;
-    uint8_t ra = (opcode >> 16) & 0x1F;
-    uint8_t rb = (opcode >> 11) & 0x1F;
+    uint8_t ra = ra_d;
+    uint8_t rb = rb_d;
 
     UpdateCRnU(l, bf, r[ra], r[rb]);
 
     if (canDisassemble)
-        printf("cmpl%s cr%d,r%d,r%d\n", l ? "w" : "d", bf, ra, rb);
+        printf("cmpl%s cr%d,r%d,r%d\n", l ? "d" : "w", bf, ra, rb);
 }
 
 void CellPPU::Neg(uint32_t opcode)
@@ -1089,7 +1160,7 @@ void CellPPU::Sradi(uint32_t opcode)
 {
     int rs = ((opcode >> 21) & 0x1F);
     int ra = ((opcode >> 16) & 0x1F);
-    int sh = (((opcode >> 11) & 0x1F) << 1) | ((opcode >> 1) & 1);
+    int sh = ((opcode >> 11) & 0x1F) | (((opcode >> 1) & 1) << 5);
     bool rc = opcode & 1;
 
     int64_t rs_ = r[rs];
@@ -1226,6 +1297,52 @@ void CellPPU::Divd(uint32_t opcode)
         printf("divd r%d,r%d,r%d\n", rt, ra, rb);
 }
 
+void CellPPU::Divw(uint32_t opcode)
+{
+    int rt = rt_d;
+    int ra = ra_d;
+    int rb = rb_d;
+    bool rc = opcode & 1;
+    bool oe = (opcode >> 10) & 1;
+
+    if (oe)
+    {
+        printf("TODO: DIVWO/DIVWO.\n");
+        exit(1);
+    }
+
+    const int32_t RA = r[ra];
+    const int32_t RB = r[rb];
+
+    if (RB == 0 || ((uint32_t)RA == (1 << 31) && RB == -1))
+    {
+        r[rt] = (((uint32_t)RA & (1 << 31) && RB == 0)) ? -1 : 0;
+    }
+    else
+    {
+        r[rt] = (int64_t)(RA / RB);
+    }
+
+    if (rc)
+        UpdateCR0<int64_t>(r[rt]);
+    
+    if (canDisassemble)
+        printf("divw r%d,r%d,r%d\n", rt, ra, rb);
+}
+
+void CellPPU::Lfsx(uint32_t opcode)
+{
+    int frt = rt_d;
+    int ra = ra_d;
+    int rb = rb_d;
+
+    (uint32_t&)fpr[frt].f = manager.Read32(ra ? r[ra] + r[rb] : r[rb]);
+    fpr[frt].f = (float&)fpr[frt].f;
+
+    if (canDisassemble)
+        printf("lfsx f%d, r%d(r%d)\n", frt, ra, rb);
+}
+
 void CellPPU::Srw(uint32_t opcode)
 {
     int rs = rs_d;
@@ -1245,6 +1362,17 @@ void CellPPU::Srw(uint32_t opcode)
 
     if (canDisassemble)
         printf("srw r%d,r%d,r%d\n", ra,rs,rb);
+}
+
+void CellPPU::Stfsx(uint32_t opcode)
+{
+    int frs = rs_d;
+    int ra = ra_d;
+    int rb = rb_d;
+
+    manager.Write32((ra ? r[ra] + r[rb] : r[rb]), fpr[frs].ToU32());
+    if (canDisassemble)
+        printf("stfsx f%d, r%d(r%d)\n", frs, ra, rb);
 }
 
 void CellPPU::Srawi(uint32_t opcode)
@@ -1291,6 +1419,18 @@ void CellPPU::Extsb(uint32_t opcode)
 
     if (canDisassemble)
         printf("extsb%s r%d,r%d\n", rc ? "." : "", ra, rs);
+}
+
+void CellPPU::Stfiwx(uint32_t opcode)
+{
+    int frs = rs_d;
+    int ra = ra_d;
+    int rb = rb_d;
+
+    manager.Write32(ra ? r[ra] + r[rb] : r[rb], (uint32_t&)fpr[frs].f);
+
+    if (canDisassemble)
+        printf("stfiwx f%d,r%d(r%d)\n", frs, ra, rb);
 }
 
 void CellPPU::Extsw(uint32_t opcode)
@@ -1386,7 +1526,7 @@ void CellPPU::Stw(uint32_t opcode)
     manager.Write32(ra ? r[ra] + d : d, r[rs]);
 
     if (canDisassemble)
-        printf("stw r%d, %d(r%d)\n", rs, d, ra);
+        printf("stw r%d, %d(r%d) (0x%08x, 0x%08x)\n", rs, d, ra, r[rs], ra ? r[ra] + d : d);
 }
 
 void CellPPU::Stwu(uint32_t opcode)
@@ -1411,7 +1551,7 @@ void CellPPU::Stb(uint32_t opcode)
 
     manager.Write8(ra ? r[ra] + ds : ds, r[rs]);
 
-    if constexpr (canDisassemble)
+    if (canDisassemble)
     {
         printf("stb r%d, %d(r%d)\n", rs, ds, ra);
     }
@@ -1427,7 +1567,7 @@ void CellPPU::Stbu(uint32_t opcode)
     manager.Write8(addr, r[rs]);
     r[ra] = addr;
 
-    if constexpr (canDisassemble)
+    if (canDisassemble)
     {
         printf("stbu r%d, %d(r%d)\n", rs, ds, ra);
     }
@@ -1441,7 +1581,7 @@ void CellPPU::Lhz(uint32_t opcode)
 
     r[rt] = manager.Read16(ra ? r[ra] + ds : ds);
 
-    if constexpr (canDisassemble)
+    if (canDisassemble)
         printf("lhz r%d, %d(r%d)\n", rt, ds, ra);
 }
 
@@ -1457,7 +1597,7 @@ void CellPPU::Sth(uint32_t opcode)
     if (u)
         r[ra] = r[ra] + ds;
 
-    if constexpr (canDisassemble)
+    if (canDisassemble)
     {
         printf("sth%s r%d, %d(r%d)\n", u ? "u" : "", rs, ds, ra);
     }
@@ -1556,7 +1696,7 @@ void CellPPU::Ld(uint32_t opcode)
 
     r[rt] = manager.Read64(ra ? r[ra] + ds : ds);
 
-    if constexpr (canDisassemble)
+    if (canDisassemble)
         printf("ld r%d, %d(r%d)\n", rt, ds, ra);
 }
 
@@ -1570,7 +1710,7 @@ void CellPPU::Ldu(uint32_t opcode)
     r[rt] = manager.Read64(addr);
     r[ra] = addr;
 
-    if constexpr (canDisassemble)
+    if (canDisassemble)
         printf("ldu r%d, %d(r%d)\n", rt, ds, ra);
 }
 
@@ -1583,11 +1723,17 @@ void CellPPU::G_3B(uint32_t opcode)
     case 0x012:
         Fdivs(opcode);
         break;
+    case 0x014:
+        Fsubs(opcode);
+        break;
     case 0x015:
         Fadds(opcode);
         break;
     case 0x019:
         Fmuls(opcode);
+        break;
+    case 0x01C:
+        Fmsubs(opcode);
         break;
     case 0x01D:
         Fmadds(opcode);
@@ -1610,13 +1756,25 @@ void CellPPU::Fdivs(uint32_t opcode)
         printf("fdivs f%d,f%d,f%d\n", frt, fra, frb);
 }
 
+void CellPPU::Fsubs(uint32_t opcode)
+{
+    int frt = rt_d;
+    int fra = ra_d;
+    int frb = rb_d;
+
+    fpr[frt].f = static_cast<float>(fpr[fra].f - fpr[frb].f);
+
+    if (canDisassemble)
+        printf("fsubs f%d,f%d,f%d\n", frt, fra, frb);
+}
+
 void CellPPU::Fadds(uint32_t opcode)
 {
     int frt = rt_d;
     int fra = ra_d;
     int frb = rb_d;
 
-    fpr[frt].f = fpr[fra].f + fpr[frb].f;
+    fpr[frt].f = static_cast<float>(fpr[fra].f + fpr[frb].f);
 
     if (canDisassemble)
         printf("fadds f%d,f%d,f%d\n", frt, fra, frb);
@@ -1628,10 +1786,23 @@ void CellPPU::Fmuls(uint32_t opcode)
     int fra = ra_d;
     int frc = rc_d;
 
-    fpr[frt].f = fpr[fra].f * fpr[frc].f;
+    fpr[frt].f = static_cast<float>(fpr[fra].f * fpr[frc].f);
 
     if (canDisassemble)
         printf("fmuls f%d,f%d,f%d\n", frt, fra, frc);
+}
+
+void CellPPU::Fmsubs(uint32_t opcode)
+{
+    int frt = rt_d;
+    int fra = ra_d;
+    int frc = rc_d;
+    int frb = rb_d;
+
+    fpr[frt].f = static_cast<float>((fpr[fra].f * fpr[frc].f) - fpr[frb].f);
+
+    if (canDisassemble)
+        printf("fmsubs f%d,f%d,f%d,f%d\n", frt, fra, frc, frb);
 }
 
 void CellPPU::Fmadds(uint32_t opcode)
@@ -1641,7 +1812,7 @@ void CellPPU::Fmadds(uint32_t opcode)
     int frc = rc_d;
     int frb = rb_d;
 
-    fpr[frt].f = (fpr[fra].f * fpr[frc].f) + fpr[frb].f;
+    fpr[frt].f = static_cast<float>((fpr[fra].f * fpr[frc].f) + fpr[frb].f);
 
     if (canDisassemble)
         printf("fmadds f%d,f%d,f%d,f%d\n", frt, fra, frc, frb);
@@ -1676,7 +1847,7 @@ void CellPPU::Std(uint32_t opcode)
 
     manager.Write64(ra ? r[ra] + ds : ds, r[rs]);
 
-    if constexpr (canDisassemble)
+    if (canDisassemble)
         printf("std r%d, %d(r%d)\n", rs, ds, ra);
 }
 
@@ -1690,7 +1861,7 @@ void CellPPU::Stdu(uint32_t opcode)
     manager.Write64(addr, r[rs]);
     r[ra] = addr;
 
-    if constexpr (canDisassemble)
+    if (canDisassemble)
         printf("stdu r%d, %d(r%d)\n", rs, ds, ra);
 }
 
@@ -1700,8 +1871,29 @@ void CellPPU::G_3F(uint32_t opcode)
 
     switch (field)
     {
+    case 0x000:
+        Fcmpu(opcode);
+        break;
     case 0x00C:
         Frsp(opcode);
+        break;
+    case 0x00F:
+        Fctiwz(opcode);
+        break;
+    case 0x012:
+        Fdiv(opcode);
+        break;
+    case 0x015:
+        Fadd(opcode);
+        break;
+    case 0x019:
+        Fmul(opcode);
+        break;
+    case 0x028:
+        Fneg(opcode);
+        break;
+    case 0x02F:
+        Fctidz(opcode);
         break;
     case 0x048:
         Fmr(opcode);
@@ -1715,6 +1907,18 @@ void CellPPU::G_3F(uint32_t opcode)
     }
 }
 
+void CellPPU::Fcmpu(uint32_t opcode)
+{
+    int fra = ra_d;
+    int frb = rb_d;
+    int bf = (opcode >> 23) & 0x7;
+
+    UpdateCRn<double>(bf, fpr[fra].f, fpr[frb].f);
+
+    if (canDisassemble)
+        printf("fcmpu cr%d,f%d,f%d\n", bf, fra, frb);
+}
+
 void CellPPU::Frsp(uint32_t opcode)
 {
     int frt = rt_d;
@@ -1726,6 +1930,114 @@ void CellPPU::Frsp(uint32_t opcode)
 
     if (canDisassemble)
         printf("frsp r%d,r%d\n", frt, frb);
+}
+
+void CellPPU::Fctiwz(uint32_t opcode)
+{
+    int frt = rt_d;
+    int frb = rb_d;
+
+    const double b = fpr[frb].f;
+    uint32_t value;
+    if (b > (double)0x7fffffff)
+    {
+        value = 0x7fffffff;
+        printf("TODO: FPSCR exceptions\n");
+    }
+    else if (b < -(double)0x80000000)
+    {
+        value = 0x80000000;
+        printf("TODO: FPSCR exceptions (underflow)\n");
+    }
+    else
+    {
+        int32_t i = (int32_t)b;
+        value = (uint32_t)i;
+    }
+
+    (uint64_t&)fpr[frt].f = 0xfff8000000000000ull | value;
+    if (!value && ((uint64_t&)b & DOUBLE_SIGN))
+        (uint64_t&)fpr[frt].f |= 0x100000000ULL;
+
+    if (canDisassemble)
+        printf("fctiwz f%d,f%d\n", frt, frb);
+}
+
+void CellPPU::Fdiv(uint32_t opcode)
+{
+    int frt = rt_d;
+    int fra = ra_d;
+    int frb = rb_d;
+
+    fpr[frt].f = (fpr[fra].f / fpr[frb].f);
+
+    if (canDisassemble)
+        printf("fdiv f%d,f%d,f%d\n", frt, fra, frb);
+}
+
+void CellPPU::Fadd(uint32_t opcode)
+{
+    int frt = rt_d;
+    int fra = ra_d;
+    int frb = rb_d;
+
+    fpr[frt].f = fpr[fra].f + fpr[frb].f;
+
+    if (canDisassemble)
+        printf("fadd f%d,f%d,f%d\n", frt, fra, frb);
+}
+
+void CellPPU::Fmul(uint32_t opcode)
+{
+    int frt = rt_d;
+    int fra = ra_d;
+    int frc = rc_d;
+
+    fpr[frt].f = fpr[fra].f * fpr[frc].f;
+
+    if (canDisassemble)
+        printf("fmul f%d,f%d,f%d\n", frt, fra, frc);
+}
+
+void CellPPU::Fneg(uint32_t opcode)
+{
+    int frt = rt_d;
+    int frb = rb_d;
+
+    fpr[frt].f = -fpr[frb].f;
+    if (canDisassemble)
+        printf("fneg f%d,f%d\n", frt, frb);
+}
+
+void CellPPU::Fctidz(uint32_t opcode)
+{
+    int frt = rt_d;
+    int frb = rb_d;
+
+    const double b = fpr[frb].f;
+    uint64_t value;
+    if (b > (double)0x7fffffffffffffff)
+    {
+        value = 0x7fffffffffffffff;
+        printf("TODO: FPSCR exceptions\n");
+    }
+    else if (b < -(double)0x8000000000000000)
+    {
+        value = 0x8000000000000000;
+        printf("TODO: FPSCR exceptions (underflow)\n");
+    }
+    else
+    {
+        int64_t i = (int64_t)b;
+        value = (uint64_t)i;
+    }
+
+    (uint64_t&)fpr[frt].f = 0xfff8000000000000ull | value;
+    if (!value && ((uint64_t&)b & DOUBLE_SIGN))
+        (uint64_t&)fpr[frt].f |= 0x100000000ULL;
+
+    if (canDisassemble)
+        printf("fctidz f%d,f%d\n", frt, frb);
 }
 
 void CellPPU::Fmr(uint32_t opcode)

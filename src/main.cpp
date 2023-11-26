@@ -46,7 +46,7 @@ int main(int argc, char** argv)
 
         while (1)
         {
-            if (cycles >= 53333)
+            if (cycles >= 533333)
             {
                 rsx->Present();
                 cycles = 0;

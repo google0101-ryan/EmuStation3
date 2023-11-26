@@ -14,6 +14,12 @@ private:
     {
         double f;
         uint64_t u;
+
+        uint32_t ToU32()
+        {
+            float f32 = (float)f;
+            return (uint32_t&)f32;
+        }
     } fpr[32];
 
     union
@@ -74,8 +80,13 @@ private:
     void UpdateCRn(const uint8_t n, const T a, const T b)
     {
         if (a < b) SetCR(n, CR_LT);
-        if (a > b) SetCR(n, CR_GT);
-        if (a == b) SetCR(n, CR_EQ);
+        else if (a > b) SetCR(n, CR_GT);
+        else if (a == b) SetCR(n, CR_EQ);
+        else if ((typeid(T) == typeid(float)) || (typeid(T) == typeid(double)))
+        {
+            printf("Float/doubles are not <, >, or ==!\n");
+            exit(1);
+        }
     }
     
     template<typename T>
@@ -114,6 +125,21 @@ private:
         exit(1);
     }
 
+    inline void SetCRBit(const uint8_t n, const uint32_t bit, const bool value)
+	{
+		switch(n)
+		{
+		case 0: value ? cr.cr0 |= bit : cr.cr0 &= ~bit; break;
+		case 1: value ? cr.cr1 |= bit : cr.cr1 &= ~bit; break;
+		case 2: value ? cr.cr2 |= bit : cr.cr2 &= ~bit; break;
+		case 3: value ? cr.cr3 |= bit : cr.cr3 &= ~bit; break;
+		case 4: value ? cr.cr4 |= bit : cr.cr4 &= ~bit; break;
+		case 5: value ? cr.cr5 |= bit : cr.cr5 &= ~bit; break;
+		case 6: value ? cr.cr6 |= bit : cr.cr6 &= ~bit; break;
+		case 7: value ? cr.cr7 |= bit : cr.cr7 &= ~bit; break;
+		}
+	}
+
     bool CheckCondition(uint32_t bo, uint32_t bi);
 
     inline uint8_t GetCR(uint8_t n) const
@@ -150,6 +176,8 @@ private:
 
     uint8_t GetCRBit(const uint32_t bit) const { return 1 << (3 - (bit % 4)); }
 
+    void SetCRBit2(const uint32_t bit, bool set) {SetCRBit(bit >> 2, 0x8 >> (bit & 3), set);}
+
     uint8_t IsCR(const uint32_t bit) const {return (GetCR(bit >> 2) & GetCRBit(bit)) ? 1 : 0;}
 
     void G_04(uint32_t opcode); // 0x04
@@ -163,6 +191,7 @@ private:
     void Branch(uint32_t opcode); // 0x12
     void G_13(uint32_t opcode); // 0x13
     void Bclr(uint32_t opcode); // 0x13 0x10
+    void Cror(uint32_t opcode); // 0x13 0x1C1
     void Bcctr(uint32_t opcode); // 0x13 0x210
     void Rlwinm(uint32_t opcode); // 0x15
     void Rlwnm(uint32_t opcode); // 0x17
@@ -177,11 +206,13 @@ private:
     void Rldimi(uint32_t opcode); // 0x1E 0x03
     void G_1F(uint32_t opcode); // 0x1F
     void Cmp(uint32_t opcode); // 0x1F 0x00
+    void Mulhdu(uint32_t opcode); // 0x1F 0x09
     void Mulhwu(uint32_t opcode); // 0x1F 0x0B
     void Mfcr(uint32_t opcode); // 0x1F 0x13
     void Lwzx(uint32_t opcode); // 0x1F 0x17
     void Slw(uint32_t opcode); // 0x1F 0x18
     void Cntlzw(uint32_t opcode); // 0x1F 0x1A
+    void Sld(uint32_t opcode); // 0x1F 0x1B
     void And(uint32_t opcode); // 0x1F 0x1C
     void Cmpl(uint32_t opcode); // 0x1F 0x20
     void Subf(uint32_t opcode); // 0x1F 0x28
@@ -204,11 +235,15 @@ private:
     void Divwu(uint32_t opcode); // 0x1F 0x1CB
     void Mtspr(uint32_t opcode); // 0x1F 0x1D3
     void Divd(uint32_t opcode); // 0x1F 0x1E9
+    void Divw(uint32_t opcode); // 0x1F 0x1EB
+    void Lfsx(uint32_t opcode); // 0x1F 0x217
     void Srw(uint32_t opcode); // 0x1F 0x218
+    void Stfsx(uint32_t opcode); // 0x1F 0x297
     void Srawi(uint32_t opcode); // 0x1F 0x338
     void Sradi(uint32_t opcode); // 0x1F 0x19D & 0x1F 0x33D
     void Extsh(uint32_t opcode); // 0x1F 0x39A
     void Extsb(uint32_t opcode); // 0x1F 0x3BA
+    void Stfiwx(uint32_t opcode); // 0x1F 0x3D7
     void Extsw(uint32_t opcode); // 0x1F 0x3DA
     void Lwz(uint32_t opcode); // 0x20
     void Lbz(uint32_t opcode); // 0x22
@@ -229,21 +264,34 @@ private:
     void Ldu(uint32_t opcode); // 0x3A 0x01
     void G_3B(uint32_t opcode); // 0x3B
     void Fdivs(uint32_t opcode); // 0x3B 0x12
+    void Fsubs(uint32_t opcode); // 0x3B 0x14
     void Fadds(uint32_t opcode); // 0x3B 0x15
     void Fmuls(uint32_t opcode); // 0x3B 0x19
-    void Fmadds(uint32_t opcode); // 0x3B 0x
+    void Fmsubs(uint32_t opcode); // 0x3B 0x1C
+    void Fmadds(uint32_t opcode); // 0x3B 0x1D
     void G_3E(uint32_t opcode); // 0x3E
     void Std(uint32_t opcode); // 0x3E 0x00
     void Stdu(uint32_t opcode); // 0x3E 0x01
     void G_3F(uint32_t opcode); // 0x3F
+    void Fcmpu(uint32_t opcode); // 0x3F 0x000
     void Frsp(uint32_t opcode); // 0x3F 0x00C
+    void Fctiwz(uint32_t opcode); // 0x3F 0x00F
+    void Fdiv(uint32_t opcode); // 0x3F 0x012
+    void Fadd(uint32_t opcode); // 0x3F 0x015
+    void Fmul(uint32_t opcode); // 0x3F 0x019
+    void Fneg(uint32_t opcode); // 0x3F 0x028
+    void Fctidz(uint32_t opcode); // 0x3F 0x02F
     void Fmr(uint32_t opcode); // 0x3F 0x048
     void Fcfid(uint32_t opcode); // 0x3F 0x04E
 
     void InitInstructionTable();
 
-    static constexpr bool canDisassemble = false;
+    bool canDisassemble = false;
+
+    uint64_t sp;
 public:
+    uint64_t GetStackAddr() {return sp;}
+
     uint64_t GetReg(int index) {return r[index];}
     void SetReg(int index, uint64_t value) {r[index] = value;}
     MemoryManager* GetManager() {return &manager;}

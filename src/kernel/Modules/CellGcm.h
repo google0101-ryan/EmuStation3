@@ -53,6 +53,14 @@ uint32_t cellGcmGetFlipStatus();
 void cellGcmResetFlipStatus();
 uint32_t cellGcmGetTiledPitchSize(uint32_t size);
 uint32_t cellGcmSetTileInfo(uint8_t index, uint8_t location, uint32_t offset, uint32_t size, uint32_t pitch, uint8_t comp, uint16_t base, uint8_t bank, CellPPU* ppu);
+uint32_t cellGcmBindTile(uint8_t index);
+
+// System call (custom)
+void cellGcmCallback(CellPPU* ppu);
+
+// Utility
+uint32_t GetIOAddres();
+uint32_t GetControlAddress();
 
 void Dump();
 

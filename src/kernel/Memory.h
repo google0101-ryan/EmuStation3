@@ -62,6 +62,8 @@ public:
     uint8_t* GetRawPtr(uint64_t offset);
 
     void MapMemory(uint64_t start, uint64_t end, uint8_t* ptr);
+    
+    void SetRSXControlReg(uint64_t addr);
 
     void DumpRam();
 
@@ -71,5 +73,6 @@ public:
     MemoryBlock* RSXCmdMem;
     MemoryBlock* RSXFBMem;
 private:
+    uint64_t rsx_control_addr;
     uint8_t** pages;
 };

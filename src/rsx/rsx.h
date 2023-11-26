@@ -45,6 +45,19 @@ enum
     BEGIN_END_POLYGON
 };
 
+struct Texture
+{
+    uint32_t offset;
+    uint8_t format;
+    uint8_t dimension;
+    bool cubemap;
+    uint16_t mipmap;
+    uint32_t pitch, depth;
+    uint32_t width, height;
+    uint32_t swizzle; // I really don't want to touch swizzling
+    bool enable;
+};
+
 class RSX
 {
 public:
@@ -77,9 +90,12 @@ private:
     bool r_mask, g_mask, b_mask, a_mask;
     Color clearColor;
     uint32_t viewport_width, viewport_height, viewport_x, viewport_y;
+    uint32_t scissor_width, scissor_height, scissor_x, scissor_y;
     float depth_min, depth_max;
     bool depthTestEnabled;
     DepthTestFunc depthTestFunc;
+
+    uint64_t semaphoreOffset;
 
     VertexShader vpe;
     VertexBinding curBinding;
@@ -93,12 +109,19 @@ private:
 
     uint32_t primitiveType;
 
+    bool blend_enable = false;
+    uint16_t blend_sfunc_rgb, blend_sfunc_alpha, blend_dfunc_rgb, blend_dfunc_alpha;
+
+    bool alpha_test_enable = false;
+
     // Contains data on the framebuffer with the id 0-7
     // We can calculate BPP from (pitch / width)*8
     struct RsxFramebuffer
     {
         uint32_t offs, pitch, width, height, bpp;
     } framebuffers[8];
+
+    Texture textures[16];
 };
 
 extern RSX* rsx;

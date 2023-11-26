@@ -78,10 +78,11 @@ uint32_t CellGcm::cellGcmInitBody(uint32_t ctxtPtr, uint32_t cmdSize, uint32_t i
     ppu->GetManager()->Write32(rsxCallback - 4, rsxCallback);
 
     ppu->GetManager()->Write32(rsxCallback, 0x396003FF);
-    ppu->GetManager()->Write32(rsxCallback+4, 0x4E800020);
+    ppu->GetManager()->Write32(rsxCallback+4, 0x44000002);
+    ppu->GetManager()->Write32(rsxCallback+8, 0x4E800020);
 
     uint32_t ctx_begin = ioAddrPtr;
-    uint32_t ctx_size = 0x6ffc;
+    uint32_t ctx_size = 32*1024-4;
     context.begin = ctx_begin;
     context.end = ctx_begin + ctx_size;
     context.current = context.begin;
@@ -89,6 +90,7 @@ uint32_t CellGcm::cellGcmInitBody(uint32_t ctxtPtr, uint32_t cmdSize, uint32_t i
 
     gcm_info.context_addr = ppu->GetManager()->main_mem->Alloc(0x1000);
     gcm_info.control_addr = gcm_info.context_addr + 0x40;
+    ppu->GetManager()->SetRSXControlReg(gcm_info.control_addr);
     gcm_info.tiles_addr = ppu->GetManager()->main_mem->Alloc(sizeof(CellGcmTileInfo) * 15);
 
     ppu->GetManager()->Write32(ctxtPtr, gcm_info.context_addr);
@@ -271,27 +273,25 @@ int CellGcm::cellGcmSetFlipCommand(uint32_t contextPtr, uint32_t id, CellPPU *pp
     ppu->GetManager()->Write32(current+4, id);
     ppu->GetManager()->Write32(contextPtr+8, current+8);
 
-    // Execute commands here, I guess?
-    rsx->DoCommands(ppu->GetManager()->GetRawPtr(begin), current+8-begin);
+    // rsx->DoCommands(ppu->GetManager()->GetRawPtr(begin), current+8-begin);
 
     return id;
 }
 
 uint32_t CellGcm::cellGcmGetControlRegister(CellPPU* ppu)
 {
-    static uint32_t controlRegister = 0;
-    if (!controlRegister)
-        controlRegister = ppu->GetManager()->RSXFBMem->Alloc(0x10);
-    return controlRegister;
+    return gcm_info.control_addr;
 }
 
 uint32_t CellGcm::cellGcmGetFlipStatus()
 {
-    return rsx->GetFlipped();
+    printf("cellGcmGetFlipStatus() = %d\n", rsx->GetFlipped());
+    return !rsx->GetFlipped();
 }
 
 void CellGcm::cellGcmResetFlipStatus()
 {
+    printf("cellGcmResetFlipStatus()\n");
     rsx->GetFlipped() = false;
 }
 
@@ -323,7 +323,7 @@ uint32_t CellGcm::cellGcmGetTiledPitchSize(uint32_t size)
 
 uint32_t CellGcm::cellGcmSetTileInfo(uint8_t index, uint8_t location, uint32_t offset, uint32_t size, uint32_t pitch, uint8_t comp, uint16_t base, uint8_t bank, CellPPU* ppu)
 {
-    printf("cellGcmSetTileInfo(%d, %d, %d, %d, %d, %d, %d, %d)\n", index, location, offset, size, pitch, comp, base, bank);
+    printf("cellGcmSetTileInfo(%d, %d, 0x%08x, 0x%08x, %d, %d, %d, %d)\n", index, location, offset, size, pitch, comp, base, bank);
     
     if (index >= 15 || base >= 800 || bank >= 4)
         return CELL_GCM_ERROR_INVALID_VALUE;
@@ -337,7 +337,6 @@ uint32_t CellGcm::cellGcmSetTileInfo(uint8_t index, uint8_t location, uint32_t o
     if (comp)
     {
         printf("TODO: Compression of tile info!\n");
-        exit(1);
     }
 
     auto& tile = tiles[index];
@@ -354,4 +353,44 @@ uint32_t CellGcm::cellGcmSetTileInfo(uint8_t index, uint8_t location, uint32_t o
     ppu->GetManager()->Write32((gcm_info.tiles_addr + sizeof(CellGcmTileInfo) * index)+4, tileData.limit);
     ppu->GetManager()->Write32((gcm_info.tiles_addr + sizeof(CellGcmTileInfo) * index)+8, tileData.pitch);
     ppu->GetManager()->Write32((gcm_info.tiles_addr + sizeof(CellGcmTileInfo) * index)+12, tileData.format);
+
+    return CELL_OK;
+}
+
+uint32_t CellGcm::cellGcmBindTile(uint8_t index)
+{
+    printf("cellGcmBindTile(%d)\n", index);
+
+    if (index >= 15)
+        return CELL_GCM_ERROR_INVALID_VALUE;
+    
+    tiles[index].bound = true;
+    return CELL_OK;
+}
+
+void CellGcm::cellGcmCallback(CellPPU* ppu)
+{
+    uint32_t begin = ppu->GetManager()->Read32(gcm_info.context_addr);
+    uint32_t current = ppu->GetManager()->Read32(gcm_info.context_addr+8);
+    uint32_t put = ppu->GetManager()->Read32(gcm_info.control_addr);
+    uint32_t get = ppu->GetManager()->Read32(gcm_info.control_addr+4);
+
+    int32_t res = current - begin - put;
+
+    if (res > 0)
+        memcpy(ppu->GetManager()->GetRawPtr(begin), ppu->GetManager()->GetRawPtr(current - res), res);
+    
+    ppu->GetManager()->Write32(gcm_info.context_addr+8, begin + res);
+    ppu->GetManager()->Write32(gcm_info.control_addr, put);
+    ppu->GetManager()->Write32(gcm_info.control_addr+4, 0);
+}
+
+uint32_t CellGcm::GetIOAddres()
+{
+    return config.ioAddress;
+}
+
+uint32_t CellGcm::GetControlAddress()
+{
+    return gcm_info.control_addr;
 }
