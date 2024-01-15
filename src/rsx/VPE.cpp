@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <array>
 
-#define printf(x, ...) 0
+// #define printf(x, ...) 0
 
 int bitExtract(int number, int p, int k)
 {
@@ -188,8 +188,8 @@ void VertexShader::DoVertexShader(MemoryManager* manager)
         }
     }
 
-    dest[0].x = (dest[0].x+1.0)*1920 / 2;
-    dest[0].y = (1.0 - dest[0].y)*1080 / 2;
+    dest[0].x = (dest[0].x+1.0)*1280 / 2;
+    dest[0].y = (1.0 - dest[0].y)*720 / 2;
 
     printf("Output vertex: (%f, %f, %f, %f)\n", dest[0].x, dest[0].y, dest[0].z, dest[0].w);
 }

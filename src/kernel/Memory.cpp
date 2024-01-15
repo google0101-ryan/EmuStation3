@@ -57,7 +57,7 @@ void MemoryManager::MapMemory(uint64_t start, uint64_t end, uint8_t *ptr)
     }
 }
 
-void MemoryManager::SetRSXControlReg(uint64_t addr)
+void MemoryManager::SetRSXControlReg(uint32_t addr)
 {
     rsx_control_addr = addr;
 }
@@ -70,7 +70,7 @@ uint8_t* MemoryManager::GetRawPtr(uint64_t offs)
 void MemoryManager::DumpRam()
 {
     std::ofstream out("mem.bin");
-    out.write((char*)main_mem->data, 0x200000);
+    out.write((char*)main_mem->data, 0x10050000);
     out.close();
     
     out.open("stack.bin");
@@ -86,7 +86,7 @@ void MemoryManager::DumpRam()
     out.close();
 }
 
-void MemoryManager::Write8(uint64_t addr, uint8_t data, bool slow)
+void MemoryManager::Write8(uint32_t addr, uint8_t data, bool slow)
 {
     if (!slow)
     {
@@ -107,7 +107,7 @@ void MemoryManager::Write8(uint64_t addr, uint8_t data, bool slow)
     }
 }
 
-void MemoryManager::Write16(uint64_t addr, uint16_t data, bool slow)
+void MemoryManager::Write16(uint32_t addr, uint16_t data, bool slow)
 {
     if (!slow)
     {
@@ -128,7 +128,7 @@ void MemoryManager::Write16(uint64_t addr, uint16_t data, bool slow)
     }
 }
 
-void MemoryManager::Write32(uint64_t addr, uint32_t data, bool slow)
+void MemoryManager::Write32(uint32_t addr, uint32_t data, bool slow)
 {
     if (!slow)
     {
@@ -157,7 +157,7 @@ void MemoryManager::Write32(uint64_t addr, uint32_t data, bool slow)
     }
 }
 
-void MemoryManager::Write64(uint64_t addr, uint64_t data, bool slow)
+void MemoryManager::Write64(uint32_t addr, uint64_t data, bool slow)
 {
     if (!slow)
     {
@@ -178,7 +178,7 @@ void MemoryManager::Write64(uint64_t addr, uint64_t data, bool slow)
     }
 }
 
-uint8_t MemoryManager::Read8(uint64_t addr, bool slow)
+uint8_t MemoryManager::Read8(uint32_t addr, bool slow)
 {
     if (!slow)
     {
@@ -199,7 +199,7 @@ uint8_t MemoryManager::Read8(uint64_t addr, bool slow)
     }
 }
 
-uint16_t MemoryManager::Read16(uint64_t addr, bool slow)
+uint16_t MemoryManager::Read16(uint32_t addr, bool slow)
 {
     if (!slow)
     {
@@ -220,7 +220,7 @@ uint16_t MemoryManager::Read16(uint64_t addr, bool slow)
     }
 }
 
-uint32_t MemoryManager::Read32(uint64_t addr, bool slow)
+uint32_t MemoryManager::Read32(uint32_t addr, bool slow)
 {
     if (!slow)
     {
@@ -241,7 +241,7 @@ uint32_t MemoryManager::Read32(uint64_t addr, bool slow)
     }
 }
 
-uint64_t MemoryManager::Read64(uint64_t addr, bool slow)
+uint64_t MemoryManager::Read64(uint32_t addr, bool slow)
 {
     if (!slow)
     {
@@ -274,7 +274,7 @@ MemoryBlock::MemoryBlock(uint64_t start, uint64_t end, MemoryManager* manager, b
 
 uint64_t MemoryBlock::Alloc(uint64_t size)
 {
-    for (uint64_t addr = begin; addr < (begin+len) - size;)
+    for (uint32_t addr = begin; addr < (begin+len) - size;)
     {
         bool is_good_addr = true;
 
@@ -299,7 +299,7 @@ uint64_t MemoryBlock::Alloc(uint64_t size)
     throw std::runtime_error("OOM Error!");
 }
 
-void MemoryBlock::MarkUsed(uint64_t addr, uint64_t size)
+void MemoryBlock::MarkUsed(uint32_t addr, uint64_t size)
 {
     Block block;
     block.addr = addr;

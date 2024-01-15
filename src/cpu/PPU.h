@@ -92,7 +92,7 @@ private:
     template<typename T>
     void UpdateCR0(const T val)
     {
-        UpdateCRn<T>(0, val, 0);
+        UpdateCRn<T>(val, 0, 0);
     }
 
     void UpdateCRnU(const uint8_t l, const uint8_t n, const uint64_t a, const uint64_t b)
@@ -119,6 +119,7 @@ private:
         {
         case 0x008: name = "lr"; return lr;
         case 0x009: name = "ctr"; return ctr;
+        case 0x100: name = "usprg0"; return usprg0;
         }
 
         printf("ERROR: Read from unknown SPR 0x%03x\n", n);
@@ -181,7 +182,9 @@ private:
     uint8_t IsCR(const uint32_t bit) const {return (GetCR(bit >> 2) & GetCRBit(bit)) ? 1 : 0;}
 
     void G_04(uint32_t opcode); // 0x04
+	void Vor(uint32_t opcode); // 0x04 0x484
     void Vxor(uint32_t opcode); // 0x04 0x4C4
+	void Mulli(uint32_t opcode); // 0x07
     void Subfic(uint32_t opcode); // 0x08
     void Cmpli(uint32_t opcode); // 0x0A
     void Cmpi(uint32_t opcode); // 0x0B
@@ -209,6 +212,7 @@ private:
     void Mulhdu(uint32_t opcode); // 0x1F 0x09
     void Mulhwu(uint32_t opcode); // 0x1F 0x0B
     void Mfcr(uint32_t opcode); // 0x1F 0x13
+    void Ldx(uint32_t opcode); // 0x1F 0x15
     void Lwzx(uint32_t opcode); // 0x1F 0x17
     void Slw(uint32_t opcode); // 0x1F 0x18
     void Cntlzw(uint32_t opcode); // 0x1F 0x1A
@@ -218,6 +222,7 @@ private:
     void Subf(uint32_t opcode); // 0x1F 0x28
     void Cntlzd(uint32_t opcode); // 0x1F 0x3A
     void Andc(uint32_t opcode); // 0x1F 0x3C
+	void Lvx(uint32_t opcode); // 0x1F 0x67
     void Neg(uint32_t opcode); // 0x1F 0x68
     void Nor(uint32_t opcode); // 0x1F 0x7C
     void Mtocrf(uint32_t opcode); // 0x1F 0x90
@@ -279,6 +284,7 @@ private:
     void Fdiv(uint32_t opcode); // 0x3F 0x012
     void Fadd(uint32_t opcode); // 0x3F 0x015
     void Fmul(uint32_t opcode); // 0x3F 0x019
+	void Fmadd(uint32_t opcode); // 0x3F 0x01D
     void Fneg(uint32_t opcode); // 0x3F 0x028
     void Fctidz(uint32_t opcode); // 0x3F 0x02F
     void Fmr(uint32_t opcode); // 0x3F 0x048
@@ -288,7 +294,7 @@ private:
 
     bool canDisassemble = false;
 
-    uint64_t sp;
+    uint64_t sp, usprg0;
 public:
     uint64_t GetStackAddr() {return sp;}
 

@@ -5,3 +5,4 @@ log
 ps3
 *.swp
 build
+*.save

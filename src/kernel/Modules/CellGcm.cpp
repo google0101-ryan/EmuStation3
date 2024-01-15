@@ -21,11 +21,7 @@ struct
     uint32_t callback;
 } context;
 
-struct GcmInfo
-{
-    uint32_t context_addr, control_addr;
-    uint32_t tiles_addr;
-} gcm_info;
+CellGcm::GcmInfo CellGcm::gcm_info;
 
 struct CellGcmTileInfo
 {
@@ -143,10 +139,10 @@ uint32_t CellGcm::cellVideOutGetState(uint32_t videoOut, uint32_t deviceIndex, u
     {
         ppu->GetManager()->Write8(statePtr+offsetof(VideoOutState, state), CELL_VIDEO_OUT_OUTPUT_STATE_ENABLED);
         ppu->GetManager()->Write8(statePtr+offsetof(VideoOutState, colorSpace), 0x01);
-        ppu->GetManager()->Write8(statePtr+offsetof(VideoOutState, displayMode)+offsetof(CellVideoOutDisplayMode, resolutionId), 0x01);
+        ppu->GetManager()->Write8(statePtr+offsetof(VideoOutState, displayMode)+offsetof(CellVideoOutDisplayMode, resolutionId), 0x02);
         ppu->GetManager()->Write8(statePtr+offsetof(VideoOutState, displayMode)+offsetof(CellVideoOutDisplayMode, scanMode), CELL_VIDEO_OUT_SCAN_MODE_PROGRESSIVE);
         ppu->GetManager()->Write8(statePtr+offsetof(VideoOutState, displayMode)+offsetof(CellVideoOutDisplayMode, conversion), 0x00);
-        ppu->GetManager()->Write8(statePtr+offsetof(VideoOutState, displayMode)+offsetof(CellVideoOutDisplayMode, aspect), 0x02);
+        ppu->GetManager()->Write8(statePtr+offsetof(VideoOutState, displayMode)+offsetof(CellVideoOutDisplayMode, aspect), 0x01);
         ppu->GetManager()->Write16(statePtr+offsetof(VideoOutState, displayMode)+offsetof(CellVideoOutDisplayMode, refreshRates), 0x01);
 
         return CELL_OK;
@@ -175,6 +171,10 @@ uint32_t CellGcm::cellGetResolution(uint32_t resId, uint32_t resPtr, CellPPU* pp
     case 0x01:
         width = 1920;
         height = 1080;
+        break;
+    case 0x02:
+        width = 1280;
+        height = 720;
         break;
     default:
         printf("Unknown resolution ID 0x%08x\n", resId);
@@ -366,6 +366,21 @@ uint32_t CellGcm::cellGcmBindTile(uint8_t index)
     
     tiles[index].bound = true;
     return CELL_OK;
+}
+
+uint32_t CellGcm::cellVideoOutGetResolutionAvailability(uint32_t videoOut, uint32_t resolutionId, uint32_t aspect, CellPPU *ppu)
+{
+    printf("cellVideoOutGetResolutionAvailability(%d, %d, %d)\n", videoOut, resolutionId, aspect);
+
+    switch (videoOut)
+    {
+    case CELL_VIDEO_OUT_PRIMARY:
+        if (resolutionId == 2 && aspect == 0)
+            return 1;
+    // Intentional fallthrough
+    default:
+        return 0;
+    }
 }
 
 void CellGcm::cellGcmCallback(CellPPU* ppu)

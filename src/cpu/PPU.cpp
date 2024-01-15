@@ -75,27 +75,27 @@ void CellPPU::Run()
 {
     uint32_t opcode = manager.Read32(pc);
 
-    if (pc == 0x16264)
-    {
-        printf("cellGcmFinish(0x%08x, %d)\n", r[3], r[4]);
-    }
+    // if (pc == 0x16264)
+    // {
+    //     printf("cellGcmFinish(0x%08x, %d)\n", r[3], r[4]);
+    // }
 
-    if (pc == 0x162E4)
-    {
-        printf("cellGcmSetReferenceCommand(0x%08x, %d)\n", r[3], r[4]);
-        printf("0x%08x\n", manager.Read32(r[3] + 8));
-        canDisassemble = true;
-    }
+    // if (pc == 0x162E4)
+    // {
+    //     printf("cellGcmSetReferenceCommand(0x%08x, %d)\n", r[3], r[4]);
+    //     printf("0x%08x\n", manager.Read32(r[3] + 8));
+    //     canDisassemble = true;
+    // }
 
-    if (pc == 0x16348)
-    {
-        canDisassemble = false;
-    }
+    // if (pc == 0x16348)
+    // {
+    //     canDisassemble = false;
+    // }
 
     pc += 4;
 
     if (canDisassemble)
-        printf("0x%02x (0x%08lx): ", (opcode >> 26) & 0x3F, pc);
+        printf("0x%08x (0x%08lx): ", opcode, pc);
 
     if (opcode == 0x60000000)
     {
@@ -137,4 +137,6 @@ void CellPPU::Dump()
     printf("pc:\t->\t0x%08lx\n", pc);
     for (int i = 0; i < 32; i++)
         printf("f%d\t->\t%f (0x%08lx)\n", i, fpr[i].f, fpr[i].u);
+    for (int i = 0; i < 32; i++)
+        printf("v%d\t->\t0x%08lx%08lx\n", i, vpr[i].u64[1], vpr[i].u64[0]);
 }

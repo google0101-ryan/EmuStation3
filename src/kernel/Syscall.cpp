@@ -1,6 +1,7 @@
 #include "Syscall.h"
 #include "Modules/CellThread.h"
 #include "Modules/CellGcm.h"
+#include "Modules/VFS.h"
 #include "types.h"
 
 #include <stdio.h>
@@ -122,6 +123,12 @@ void Syscalls::DoSyscall(CellPPU *ppu)
         RETURN(CELL_OK);
         break;
     }
+    case 0x321:
+        RETURN(VFS::cellFsOpen(ARG0, ARG1, ARG2, ppu));
+        break;
+    case 0x329:
+        RETURN(VFS::cellFsFstat(ARG0, ARG1, ppu));
+        break;
     case 0x3DC:
         break;
     case 0x3FF:

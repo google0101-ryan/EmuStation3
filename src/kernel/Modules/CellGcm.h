@@ -54,6 +54,7 @@ void cellGcmResetFlipStatus();
 uint32_t cellGcmGetTiledPitchSize(uint32_t size);
 uint32_t cellGcmSetTileInfo(uint8_t index, uint8_t location, uint32_t offset, uint32_t size, uint32_t pitch, uint8_t comp, uint16_t base, uint8_t bank, CellPPU* ppu);
 uint32_t cellGcmBindTile(uint8_t index);
+uint32_t cellVideoOutGetResolutionAvailability(uint32_t videoOut, uint32_t resolutionId, uint32_t aspect, CellPPU* ppu);
 
 // System call (custom)
 void cellGcmCallback(CellPPU* ppu);
@@ -61,6 +62,14 @@ void cellGcmCallback(CellPPU* ppu);
 // Utility
 uint32_t GetIOAddres();
 uint32_t GetControlAddress();
+
+struct GcmInfo
+{
+    uint32_t context_addr, control_addr;
+    uint32_t tiles_addr;
+};
+
+extern GcmInfo gcm_info;
 
 void Dump();
 

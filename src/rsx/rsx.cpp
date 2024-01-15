@@ -17,9 +17,9 @@ uint32_t start_time, frame_time;
 void RSX::Init()
 {
     SDL_Init(SDL_INIT_EVERYTHING);
-    window = SDL_CreateWindow("PS3", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1920 / 2, 1080 / 2, 0);
+    window = SDL_CreateWindow("PS3", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, 0);
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-    texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STREAMING, 1920, 1080);
+    texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STREAMING, 1280, 720);
 
     start_time = SDL_GetTicks();
 }
@@ -28,8 +28,8 @@ void RSX::Present()
 {
     if (!framebuffer) return;
 
-    SDL_UpdateTexture(texture, NULL, framebuffer, framebuffers[0].pitch);
-    SDL_RenderCopy(renderer, texture, NULL, NULL);
+    // SDL_UpdateTexture(texture, NULL, framebuffer, colorPitch);
+    // SDL_RenderCopy(renderer, texture, NULL, NULL);
     SDL_RenderPresent(renderer);
 
     flipped = true;
@@ -91,11 +91,8 @@ void RSX::DoCommands(uint8_t *buf, uint32_t size)
     uint32_t put =  manager->Read32(CellGcm::GetControlAddress());
     buf = manager->GetRawPtr(CellGcm::GetIOAddres() + get);
 
-    printf("0x%08x\n", CellGcm::GetIOAddres());
-
     while (get < put)
     {
-        printf("0x%08x, 0x%08x\n", get, put);
         uint32_t cmd = Read32(buf, offs, get);
         const uint32_t count = (cmd >> 18) & 0x7ff;
 
@@ -151,6 +148,7 @@ void RSX::DoCmd(uint32_t fullCmd, uint32_t cmd, std::vector<uint32_t> &args, int
         manager->Write32(CellGcm::GetControlAddress()+8, args[0]);
         break;
     case 0x064:
+    case 0x1d6c:
         printf("NV406ETCL_SEMAPHORE_OFFSET(0x%08x)\n", args[0]);
         semaphoreOffset = args[0];
         break;
@@ -440,6 +438,14 @@ void RSX::DoCmd(uint32_t fullCmd, uint32_t cmd, std::vector<uint32_t> &args, int
         printf("NV40TCL_FP_CONTROL(0x%08x)\n", shaderControl);
         break;
     }
+    case 0x1D70:
+    {
+        uint32_t value = args[0];
+        value = (value & 0xff00ff00) | ((value & 0xff) << 16) | ((value >> 16) & 0xff);
+        manager->Write32(manager->RSXCmdMem->GetStart() + semaphoreOffset, value);
+        printf("NV40TCL_SEMAPHORE_BACKENDWRITE_RELEASE(0x%08x)\n", value);
+        break;
+    }
     case 0x1D8C:
     {
         printf("NV40TCL_ZSTENCIL_CLEAR_VALUE(0x%06x, 0x%02x)\n", args[0] >> 8, args[0] & 0xff);
@@ -503,6 +509,9 @@ void RSX::ClearFramebuffers(uint32_t mask)
 {
     uint32_t colorMask = 0xFFFFFFFF; // Clear none of the colors by default
 
+	SDL_SetRenderDrawColor(renderer, clearColor.r, clearColor.g, clearColor.b, clearColor.a);
+	SDL_RenderClear(renderer);
+
     framebuffer = manager->GetRawPtr(manager->RSXFBMem->GetStart() + color0Offset);
     depthBuffer = manager->GetRawPtr(manager->RSXFBMem->GetStart() + zOffset);
 
@@ -527,103 +536,69 @@ void RSX::ClearFramebuffers(uint32_t mask)
         {
             *(uint32_t*)&framebuffer[(x*4) + (y * colorPitch)] &= colorMask;
             *(uint32_t*)&framebuffer[(x*4) + (y * colorPitch)] |= color & ~colorMask;
-            *(uint32_t*)&depthBuffer[(x*4) + (y * zPitch)] &= depthMask;
+            *(uint32_t*)&depthBuffer[(x*4) + (y * zPitch)] = 0;
         }
     }
 
     printf("NV40TCL_CLEAR_BUFFERS(0x%08x)\n", mask);
 }
 
-float orient2d(vec4& v1, vec4& v2, vec4& v3)
+bool is_top_left(vec4 start, vec4 end)
 {
-    return (v2.x - v1.x) * (v3.y - v1.y) - (v3.x - v1.x) * (v2.y - v1.y);
+	vec4 edge = {end.x - start.x, end.y - start.y, 0, 0};
+	bool is_top_edge = edge.y == 0 && edge.x > 0;
+	bool is_left_edge = edge.y < 0;
+	return is_left_edge || is_top_edge;
 }
 
-#undef printf
-
-void RSX::DrawTriangle(Vertex v0, Vertex v1, Vertex v2)
+float edge_cross(vec4 a, vec4 b, vec4 p)
 {
-    auto p0 = v0.pos, p1 = v1.pos, p2 = v2.pos;
+	vec4 ab = {b.x - a.x, b.y - a.y, 0, 0};
+	vec4 ap = {p.x - a.x, p.y - a.y, 0, 0};
+	return ab.x * ap.y - ab.y * ap.x;
+}
 
-    if (orient2d(p0, p1, p2) < 0)
-        std::swap(p1, p2);
-    
-    int32_t min_x = std::min({p0.x, p1.x, p2.x});
-    int32_t max_x = std::max({p0.x, p1.x, p2.x});
-    int32_t min_y = std::min({p0.y, p1.y, p2.y});
-    int32_t max_y = std::max({p0.y, p1.y, p2.y});
+void RSX::DrawTriangle(Vertex vert0, Vertex vert1, Vertex vert2)
+{
+#if 0
+	// Software triangle rasterization
+#else
+	// Cheating by using SDL_RenderGeometry
+	// This sucks because we can't do depth buffering or texture mapping
+	std::vector<SDL_Vertex> vertices;
 
-    int32_t A12 = p0.x - p1.y;
-    int32_t B12 = p1.x - p0.x;
-    int32_t A23 = p1.y - p2.y;
-    int32_t B23 = p2.x - p1.x;
-    int32_t A31 = p2.y - p0.y;
-    int32_t B31 = p0.x - p2.x;
+	Vertex v0, v1, v2;
+	SDL_RenderWindowToLogical(renderer, vert0.pos.x, vert0.pos.y, &v0.pos.x, &v0.pos.y);
+	SDL_RenderWindowToLogical(renderer, vert1.pos.x, vert1.pos.y, &v1.pos.x, &v1.pos.y);
+	SDL_RenderWindowToLogical(renderer, vert2.pos.x, vert2.pos.y, &v2.pos.x, &v2.pos.y);
+	v0.color = vert0.color;
+	v1.color = vert1.color;
+	v2.color = vert2.color;
 
-    vec4 min_corner = {};
-    min_corner.x = min_x;
-    min_corner.y = min_y;
-    int32_t w1_row = orient2d(p1, p2, min_corner);
-    int32_t w2_row = orient2d(p2, p0, min_corner);
-    int32_t w3_row = orient2d(p0, p1, min_corner);
+	SDL_Vertex v;
+	v.position.x = v0.pos.x;
+	v.position.y = v0.pos.y;
+	v.color.r = v0.color.x;
+	v.color.g = v0.color.y;
+	v.color.b = v0.color.z;
+	v.color.a = SDL_ALPHA_OPAQUE;
+	vertices.push_back(v);
+	v.position.x = v1.pos.x;
+	v.position.y = v1.pos.y;
+	v.color.r = v1.color.x;
+	v.color.g = v1.color.y;
+	v.color.b = v1.color.z;
+	v.color.a = SDL_ALPHA_OPAQUE;
+	vertices.push_back(v);
+	v.position.x = v2.pos.x;
+	v.position.y = v2.pos.y;
+	v.color.r = v2.color.x;
+	v.color.g = v2.color.y;
+	v.color.b = v2.color.z;
+	v.color.a = SDL_ALPHA_OPAQUE;
+	vertices.push_back(v);
 
-    float r1 = v0.color.x;
-    float r2 = v1.color.x;
-    float r3 = v2.color.x;
-
-    float g1 = v0.color.y;
-    float g2 = v1.color.y;
-    float g3 = v2.color.y;
-
-    float b1 = v0.color.z;
-    float b2 = v1.color.z;
-    float b3 = v2.color.z;
-
-    float z1 = v0.pos.z;
-    float z2 = v1.pos.z;
-    float z3 = v2.pos.z;
-
-    int32_t divider = orient2d(p0, p1, p2);
-
-    printf("Drawing triangle at (%f, %f), (%f, %f), (%f, %f)\n", p0.x, p0.y, p1.x, p1.y, p2.x, p2.y);
-    printf("(%f, %f, %f) (%f, %f, %f) (%f, %f, %f)\n", r1, g1, b1, r2, g2, b2, r3, g3, b3);
-
-    for (float y = min_y; y <= max_y; y++)
-    {
-        int32_t w1 = w1_row;
-        int32_t w2 = w2_row;
-        int32_t w3 = w3_row;
-
-        for (float x = min_x; x <= max_x; x++)
-        {
-            if ((w1 | w2 | w3) >= 0)
-            {
-                uint32_t pos = ((x*4) + (y*colorPitch));
-                int r = ((float) r1 * w1 + (float) r2 * w2 + (float) r3 * w3) / divider;
-				int g = ((float) g1 * w1 + (float) g2 * w2 + (float) g3 * w3) / divider;
-				int b = ((float) b1 * w1 + (float) b2 * w2 + (float) b3 * w3) / divider;
-                float z = (z1*w1 + z2*w2 + z3*w3) / divider;
-                uint32_t color = 0;
-                if (r_mask)
-                    color |= (r << 24);
-                if (g_mask)
-                    color |= (g << 16);
-                if (b_mask)
-                    color |= (b << 8);
-                color |= 0xFF;
-                if (x <= viewport_width && x >= viewport_x && y <= viewport_height && y >= viewport_y
-                    && (*(float*)&depthBuffer[pos] == 0 || *(float*)&depthBuffer[pos] < z))
-                {
-                    *(uint32_t*)&framebuffer[pos] = color;
-                    *(float*)&depthBuffer[pos] = z;
-                }
-            }
-            w1 += A23;
-            w2 += A31;
-            w3 += A12;
-        }
-        w1_row += B23;
-        w2_row += B31;
-        w3_row += B12;
-    }
+	SDL_RenderGeometry(renderer, NULL, vertices.data(), vertices.size(), NULL, 0);
+	//SDL_RenderPresent(renderer);
+#endif
 }

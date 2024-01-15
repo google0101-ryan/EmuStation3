@@ -42,7 +42,6 @@ uint32_t MutexModule::sysLwMutexLock(uint64_t mutexptr, uint64_t timeout, CellPP
     if (ppu->GetManager()->Read64(mutexptr))
     {
         printf("TODO: Tried to lock a locked mutex!\n");
-        exit(1);
     }
 
     ppu->GetManager()->Write64(mutexptr, 1);

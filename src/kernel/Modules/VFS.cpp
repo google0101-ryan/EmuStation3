@@ -17,7 +17,7 @@ struct MountPoint
 std::vector<MountPoint> mntPoints;
 std::unordered_map<int, FILE*> fds;
 
-static int curFd = 3;
+static int curFd = 4;
 
 void VFS::InitVFS()
 {
@@ -104,5 +104,56 @@ uint32_t VFS::cellFsClose(uint32_t fd)
 {
     printf("cellFsClose(%d)\n", fd);
     fds[fd] = NULL;
+    return CELL_OK;
+}
+
+enum
+{
+	CELL_FS_S_IFDIR = 0040000,	//directory
+	CELL_FS_S_IFREG = 0100000,	//regular
+	CELL_FS_S_IFLNK = 0120000,	//symbolic link
+	CELL_FS_S_IFWHT = 0160000,	//unknown
+
+	CELL_FS_S_IRUSR = 0000400,	//R for owner
+	CELL_FS_S_IWUSR = 0000200,	//W for owner
+	CELL_FS_S_IXUSR = 0000100,	//X for owner
+
+	CELL_FS_S_IRGRP = 0000040,	//R for group
+	CELL_FS_S_IWGRP = 0000020,	//W for group
+	CELL_FS_S_IXGRP = 0000010,	//X for group
+
+	CELL_FS_S_IROTH = 0000004,	//R for other
+	CELL_FS_S_IWOTH = 0000002,	//W for other
+	CELL_FS_S_IXOTH = 0000001,	//X for other
+};
+
+uint32_t VFS::cellFsFstat(uint32_t fd, uint32_t statPtr, CellPPU* ppu)
+{
+    printf("cellFsFstat(%d, 0x%08x)\n", fd, statPtr);
+    if (fd == 1)
+    {
+        ppu->GetManager()->Write32(statPtr+0x00, CELL_FS_S_IRUSR | CELL_FS_S_IWUSR | CELL_FS_S_IXUSR |
+            CELL_FS_S_IRGRP | CELL_FS_S_IWGRP | CELL_FS_S_IXGRP |
+            CELL_FS_S_IROTH | CELL_FS_S_IWOTH | CELL_FS_S_IXOTH | CELL_FS_S_IFREG);
+        
+        ppu->GetManager()->Write32(statPtr+0x04, 0);
+        ppu->GetManager()->Write32(statPtr+0x08, 0);
+        ppu->GetManager()->Write32(statPtr+0x0C, 0);
+        ppu->GetManager()->Write32(statPtr+0x10, 0);
+        ppu->GetManager()->Write32(statPtr+0x14, 0);
+        ppu->GetManager()->Write32(statPtr+0x18, 0);
+        ppu->GetManager()->Write32(statPtr+0x1C, 4096);
+    }
+    else if (fds.find(fd) != fds.end())
+    {
+        printf("Error: Couldn't stat unknown fd (which exists) %d!\n", fd);
+        exit(1);
+    }
+    else
+    {
+        printf("Error: Couldn't stat unknown fd %d!\n", fd);
+        exit(1);
+    }
+
     return CELL_OK;
 }

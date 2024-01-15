@@ -8,6 +8,7 @@
 #include "Modules/CellThread.h"
 #include "Modules/VFS.h"
 #include "Modules/CellHeap.h"
+#include "Modules/CellPad.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -105,6 +106,9 @@ void Modules::DoHLECall(uint32_t nid, CellPPU* ppu)
     case 0x1bc200f4:
         RETURN(MutexModule::sysLwMutexUnlock(ARG0, ppu));
         break;
+	case 0x1cf98800:
+		RETURN(CellPad::cellPadInit(ARG0));
+		break;
     case 0x21397818:
         RETURN(CellGcm::cellGcmSetFlipCommand(ARG0, ARG1, ppu));
         break;
@@ -170,6 +174,10 @@ void Modules::DoHLECall(uint32_t nid, CellPPU* ppu)
         printf("sysProcessAt_ExitSpawn(0x%08lx)\n", ARG0);
         RETURN(CELL_OK);
         break;
+    case 0x983fb9aa:
+        ppu->GetManager()->Write32(CellGcm::GetControlAddress(), ppu->GetManager()->Read32(CellGcm::gcm_info.context_addr+8));
+        RETURN(CELL_OK);
+        break;
     case 0x9d98afa0:
         printf("cellSysutilRegisterCallback(%ld, 0x%08lx, 0x%08lx)\n", ARG0, ARG1, ARG2);
         RETURN(CELL_OK);
@@ -177,6 +185,9 @@ void Modules::DoHLECall(uint32_t nid, CellPPU* ppu)
     case 0xa285139d:
         SpinlockModule::sysSpinlockLock(ARG0, ppu);
         RETURN(CELL_OK);
+        break;
+    case 0xa322db75:
+        RETURN(CellGcm::cellVideoOutGetResolutionAvailability(ARG0, ARG1, ARG2, ppu));
         break;
     case 0xa397d042:
         RETURN(VFS::cellFsSeek(ARG0, ARG1, ARG2, ARG3, ppu));
@@ -200,6 +211,9 @@ void Modules::DoHLECall(uint32_t nid, CellPPU* ppu)
     case 0xbd100dbc:
         CellGcm::cellGcmSetTileInfo(ARG0, ARG1, ARG2, ARG3, ARG4, ARG5, ARG6, ARG7, ppu);
         break;
+    case 0xdc09357e:
+        RETURN(CELL_OK);
+        break;
     case 0xe315a0b2:
         RETURN(CellGcm::cellGcmGetConfiguration(ARG0, ppu));
         break;
@@ -208,6 +222,10 @@ void Modules::DoHLECall(uint32_t nid, CellPPU* ppu)
         break;
     case 0xecdcf2ab:
         RETURN(VFS::cellFsWrite(ARG0, ARG1, ARG2, ARG3, ppu));
+        break;
+    case 0xf80196c1:
+        printf("cellGcmGetLabelAddress(0x%02x)\n", ARG0);
+        RETURN(ppu->GetManager()->RSXCmdMem->GetStart() + (ARG0 << 4));
         break;
     default:
         printf("Called unknown function with nid 0x%08x\n", nid);
