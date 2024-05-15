@@ -37,6 +37,15 @@ uint32_t MutexModule::sysLwMutexCreate(uint64_t mutexptr, uint64_t attrptr, Cell
     return CELL_OK;
 }
 
+uint32_t MutexModule::sysLwCondCreate(uint64_t condptr, uint32_t lwid_ptr, uint32_t lwid, CellPPU *ppu)
+{
+	printf("sysLwMutexCreate(0x%08lx, 0x%08x)\n", condptr, lwid_ptr);
+
+    ppu->GetManager()->Write64(condptr, lwid+1);
+    
+	return CELL_OK;
+}
+
 uint32_t MutexModule::sysLwMutexLock(uint64_t mutexptr, uint64_t timeout, CellPPU *ppu)
 {
     if (ppu->GetManager()->Read64(mutexptr))
@@ -46,7 +55,7 @@ uint32_t MutexModule::sysLwMutexLock(uint64_t mutexptr, uint64_t timeout, CellPP
 
     ppu->GetManager()->Write64(mutexptr, 1);
 
-    printf("sysLwMutexLock(0x%08lx, 0x%08lx)\n", mutexptr, timeout);
+    // printf("sysLwMutexLock(0x%08lx, 0x%08lx)\n", mutexptr, timeout);
 
     return CELL_OK;
 }
@@ -55,7 +64,7 @@ uint32_t MutexModule::sysLwMutexUnlock(uint64_t mutexptr, CellPPU *ppu)
 {
     ppu->GetManager()->Write64(mutexptr, 0);
 
-    printf("sysLwMutexUnlock(0x%08lx)\n", mutexptr);
+    // printf("sysLwMutexUnlock(0x%08lx)\n", mutexptr);
 
     return CELL_OK;
 }

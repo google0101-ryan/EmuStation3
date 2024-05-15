@@ -6,6 +6,7 @@
 #include <string>
 #include <string.h>
 #include <cerrno>
+#include <cassert>
 
 static std::string basePath = "";
 
@@ -96,7 +97,8 @@ uint32_t VFS::cellFsWrite(uint32_t fd, uint32_t bufPtr, uint32_t size, uint32_t 
 {
     printf("cellFsWrite(%d, 0x%08x, %d, 0x%08x)\n", fd, bufPtr, size, writtenPtr);
 
-    fwrite(ppu->GetManager()->GetRawPtr(bufPtr), 1, size, fds[fd]);
+    size_t size_written = fwrite(ppu->GetManager()->GetRawPtr(bufPtr), 1, size, fds[fd]);
+	assert(size_written == size);
     return CELL_OK;
 }
 

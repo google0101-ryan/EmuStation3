@@ -18,6 +18,8 @@ set(SOURCES src/main.cpp
             src/kernel/Modules/VFS.cpp
             src/kernel/Modules/CellHeap.cpp
             src/kernel/Modules/CellPad.cpp
+            src/kernel/Modules/CellResc.cpp
+            src/kernel/Modules/CellSysUtil.cpp
             src/kernel/Syscall.cpp
             src/loaders/Elf.cpp)
 
@@ -36,7 +38,7 @@ target_link_libraries(ps3 ${SDL2_LIBRARIES})
 if(MSVC)
   target_compile_options(${TARGET_NAME} PRIVATE /W4 /WX)
 else()
-  target_compile_options(${TARGET_NAME} PRIVATE -pg -O3 -g -mincoming-stack-boundary=3 -std=c++23)
+  target_compile_options(${TARGET_NAME} PRIVATE -pg -O3 -g -std=c++2b -mavx -mavx512f)
   target_link_options(${TARGET_NAME} PRIVATE -pg)
 endif()
 

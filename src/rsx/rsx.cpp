@@ -90,6 +90,7 @@ void RSX::DoCommands(uint8_t *buf, uint32_t size)
     uint32_t get =  manager->Read32(CellGcm::GetControlAddress()+4);
     uint32_t put =  manager->Read32(CellGcm::GetControlAddress());
     buf = manager->GetRawPtr(CellGcm::GetIOAddres() + get);
+	printf("Executing 0x%08x bytes of commands\n", put - get);
 
     while (get < put)
     {
@@ -453,10 +454,10 @@ void RSX::DoCmd(uint32_t fullCmd, uint32_t cmd, std::vector<uint32_t> &args, int
     }
     case 0x1D90:
     {
-        clearColor.r = (args[0] >> 24) & 0xff;
-        clearColor.g = (args[0] >> 16) & 0xff;
-        clearColor.b = (args[0] >> 8) & 0xff;
-        clearColor.a = (args[0] >> 0) & 0xff;
+        clearColor.a = (args[0] >> 24) & 0xff;
+        clearColor.b = (args[0] >> 16) & 0xff;
+        clearColor.g = (args[0] >> 8) & 0xff;
+        clearColor.r = (args[0] >> 0) & 0xff;
         printf("NV30_CLEAR_COLOR(%d, %d, %d, %d)\n", clearColor.r, clearColor.g, clearColor.b, clearColor.a);
         break;
     }

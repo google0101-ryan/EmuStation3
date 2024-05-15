@@ -1,5 +1,6 @@
 #include "kernel/Memory.h"
 #include "kernel/Modules/VFS.h"
+#include "kernel/Modules/CellThread.h"
 #include "loaders/Elf.h"
 #include "cpu/PPU.h"
 #include "rsx/rsx.h"
@@ -37,7 +38,10 @@ int main(int argc, char** argv)
         uint64_t ret_addr = manager.main_mem->Alloc(4);
         manager.Write32(ret_addr, 0x44000042);
 
-        CellPPU* ppu = new CellPPU(entry, ret_addr, manager);
+        CellPPU* ppu = new CellPPU(manager);
+		Thread* mainThread = new Thread(entry, ret_addr, 0x10000, 0, 0, manager);
+		Reschedule()->Switch(ppu);
+		
 
         rsx->Init();
         rsx->SetMman(&manager);
