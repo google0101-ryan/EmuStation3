@@ -969,6 +969,9 @@ void CellPPU::G_1F(uint32_t opcode)
 	case 0x054:
 		Ldarx(opcode);
 		break;
+	case 0x057:
+		Lbzx(opcode);
+		break;
 	case 0x067:
 		Lvx(opcode);
 		break;
@@ -1062,6 +1065,10 @@ void CellPPU::G_1F(uint32_t opcode)
     case 0x33B:
         Sradi(opcode);
         break;
+	case 0x356:
+		if (canDisassemble)
+			printf("eieio\n");
+		break;
     case 0x39A:
         Extsh(opcode);
         break;
@@ -1432,6 +1439,18 @@ void CellPPU::Ldarx(uint32_t opcode)
 
     if (canDisassemble)
         printf("ldarx r%d, r%d(r%d)\n", rt, rb, ra);
+}
+
+void CellPPU::Lbzx(uint32_t opcode)
+{
+	int rt = rt_d;
+    int ra = ra_d;
+    int rb = rb_d;
+
+    state.r[rt] = manager.Read8(ra ? state.r[ra] + state.r[rb] : state.r[rb]);
+
+	if (canDisassemble)
+        printf("lbzx r%d, r%d(r%d)\n", rt, rb, ra);
 }
 
 void CellPPU::Lvx(uint32_t opcode)

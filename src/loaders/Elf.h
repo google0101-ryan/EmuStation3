@@ -21,44 +21,45 @@ class MemoryManager;
 // Which means we can compare BCTRL's destination with the NID list to detect module calls
 // Boom.
 
+BEGIN_BE_STRUCT(ElfHeader)
+    uint8_t e_ident[16];
+    BE_MEMBER_16(e_type);
+    BE_MEMBER_16(e_machine);
+    BE_MEMBER_32(e_version);
+	BE_MEMBER_64(e_entry);
+    BE_MEMBER_64(e_phoff);
+    BE_MEMBER_64(e_shoff);
+    BE_MEMBER_32(e_flags);
+    BE_MEMBER_16(e_ehsize);
+    BE_MEMBER_16(e_phentsize);
+    BE_MEMBER_16(e_phnum);
+    BE_MEMBER_16(e_shentsize);
+    BE_MEMBER_16(e_shnum);
+    BE_MEMBER_16(e_shstrndx);
+END_BE_STRUCT();
+
+BEGIN_BE_STRUCT(ElfPhdr)
+    BE_MEMBER_32(p_type);
+    BE_MEMBER_32(p_flags);
+    BE_MEMBER_64(p_offset);
+    BE_MEMBER_64(p_vaddr);
+    BE_MEMBER_64(p_paddr);
+    BE_MEMBER_64(p_filesz);
+    BE_MEMBER_64(p_memsz);
+    BE_MEMBER_64(p_align);
+END_BE_STRUCT();
+
 extern std::unordered_map<uint32_t, uint32_t> syscall_nids;
 
 class ElfLoader
 {
 private:
     MemoryManager& mman;
+	ElfHeader hdr;
 
     uint8_t* buf;
     uint8_t* cur_p;
     size_t len;
-
-    BEGIN_BE_STRUCT(ElfHeader)
-        uint8_t e_ident[16];
-        BE_MEMBER_16(e_type);
-        BE_MEMBER_16(e_machine);
-        BE_MEMBER_32(e_version);
-        BE_MEMBER_64(e_entry);
-        BE_MEMBER_64(e_phoff);
-        BE_MEMBER_64(e_shoff);
-        BE_MEMBER_32(e_flags);
-        BE_MEMBER_16(e_ehsize);
-        BE_MEMBER_16(e_phentsize);
-        BE_MEMBER_16(e_phnum);
-        BE_MEMBER_16(e_shentsize);
-        BE_MEMBER_16(e_shnum);
-        BE_MEMBER_16(e_shstrndx);
-    END_BE_STRUCT() hdr;
-
-    BEGIN_BE_STRUCT(ElfPhdr)
-        BE_MEMBER_32(p_type);
-        BE_MEMBER_32(p_flags);
-        BE_MEMBER_64(p_offset);
-        BE_MEMBER_64(p_vaddr);
-        BE_MEMBER_64(p_paddr);
-        BE_MEMBER_64(p_filesz);
-        BE_MEMBER_64(p_memsz);
-        BE_MEMBER_64(p_align);
-    END_BE_STRUCT();
 
     BEGIN_BE_STRUCT(ProcParamInfo)
         BE_MEMBER_32(size);

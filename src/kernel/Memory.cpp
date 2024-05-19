@@ -9,6 +9,7 @@
 #include <fstream>
 #include <rsx/rsx.h>
 #include <kernel/Modules/CellGcm.h>
+#include <cpu/SPU.h>
 
 #define PAGE_SIZE (64*1024)
 
@@ -19,7 +20,7 @@ MemoryManager::MemoryManager()
     memset(pages, 0, (0x100000000ULL / PAGE_SIZE) * sizeof(uint8_t*));
     memset(pages, 0, (0x100000000ULL / PAGE_SIZE) * sizeof(uint8_t*));
 
-    stack = new MemoryBlock(0xD0000000ULL, 0x100000000ULL, this);
+    stack = new MemoryBlock(0xD0000000ULL, 0xE0000000ULL, this);
     main_mem = new MemoryBlock(0x00010000, 0x2FFF0000, this);
     prx_mem = new MemoryBlock(0x30000000, 0x40000000, this);
     RSXCmdMem = new MemoryBlock(0x40000000, 0x50000000, this);
@@ -70,7 +71,7 @@ uint8_t* MemoryManager::GetRawPtr(uint64_t offs)
 void MemoryManager::DumpRam()
 {
     std::ofstream out("mem.bin");
-    out.write((char*)main_mem->data, 0x10050000);
+    out.write((char*)main_mem->data, 0x10000000ULL);
     out.close();
     
     out.open("stack.bin");
@@ -95,7 +96,7 @@ void MemoryManager::Write8(uint32_t addr, uint8_t data, bool slow)
 
         if (!pages[page])
         {
-            printf("No memory mapped for 0x%08lx, trying slow I/O\n", addr);
+            
             Write8(addr, data, true);
         }
 
@@ -116,7 +117,7 @@ void MemoryManager::Write16(uint32_t addr, uint16_t data, bool slow)
 
         if (!pages[page])
         {
-            printf("No memory mapped for 0x%08lx, trying slow I/O\n", addr);
+            
             Write16(addr, data, true);
         }
 
@@ -137,15 +138,33 @@ void MemoryManager::Write32(uint32_t addr, uint32_t data, bool slow)
 
         if (!pages[page])
         {
-            printf("No memory mapped for 0x%08lx, trying slow I/O\n", addr);
+            
             Write32(addr, data, true);
+			return;
         }
 
         *(uint32_t*)&pages[page][page_offs] = __bswap_32(data);
     }
     else
     {
-        throw std::runtime_error(std::format("Error: Write64 {:#04x} to unknown addr {:#010x}", data, addr));
+		if (addr >= 0xE0000000 && addr < 0xE0600000)
+		{
+			auto spu = (addr >> 20) & 0xF;
+			assert(spu < 6);
+
+			if (addr & 0xF0000)
+			{
+				printf("Write to problem storage register 0x%04x on SPU %d\n", addr & 0xFFFF, spu);
+				g_spus[spu]->WriteProblemStorage(addr & 0xFFFF, data);
+				return;
+			}
+			else
+			{
+				printf("Write to SPU %d local store\n", spu);
+			}
+		}
+
+        throw std::runtime_error(std::format("Error: Write32 {:#04x} to unknown addr {:#010x}", data, addr));
     }
     
     if (rsx_control_addr && addr == rsx_control_addr)
@@ -166,7 +185,7 @@ void MemoryManager::Write64(uint32_t addr, uint64_t data, bool slow)
 
         if (!pages[page])
         {
-            printf("No memory mapped for 0x%08lx, trying slow I/O\n", addr);
+            
             Write64(addr, data, true);
         }
 
@@ -187,7 +206,7 @@ uint8_t MemoryManager::Read8(uint32_t addr, bool slow)
 
         if (!pages[page])
         {
-            printf("No memory mapped for 0x%08lx, trying slow I/O\n", addr);
+            
             return Read8(addr, true);
         }
 
@@ -208,7 +227,7 @@ uint16_t MemoryManager::Read16(uint32_t addr, bool slow)
 
         if (!pages[page])
         {
-            printf("No memory mapped for 0x%08lx, trying slow I/O\n", addr);
+            
             return Read16(addr, true);
         }
 
@@ -229,7 +248,7 @@ uint32_t MemoryManager::Read32(uint32_t addr, bool slow)
 
         if (!pages[page])
         {
-            printf("No memory mapped for 0x%08lx, trying slow I/O\n", addr);
+            
             return Read32(addr, true);
         }
 
@@ -237,6 +256,22 @@ uint32_t MemoryManager::Read32(uint32_t addr, bool slow)
     }
     else
     {
+		if (addr >= 0xE0000000 && addr < 0xE0600000)
+		{
+			auto spu = (addr >> 20) & 0xF;
+			assert(spu < 6);
+
+			if (addr & 0xF0000)
+			{
+				printf("Read from problem storage register 0x%04x on SPU %d\n", addr & 0xFFFF, spu);
+				return g_spus[spu]->ReadProblemStorage(addr & 0xFFFF);
+			}
+			else
+			{
+				printf("Read from SPU %d local store\n", spu);
+			}
+		}
+
         throw std::runtime_error(std::format("Error: Read32 from unknown addr {:#010x}", addr));
     }
 }
@@ -250,7 +285,7 @@ uint64_t MemoryManager::Read64(uint32_t addr, bool slow)
 
         if (!pages[page])
         {
-            printf("No memory mapped for 0x%08lx, trying slow I/O\n", addr);
+            
             return Read64(addr, true);
         }
 

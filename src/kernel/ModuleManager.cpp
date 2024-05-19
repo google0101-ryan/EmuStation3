@@ -11,6 +11,7 @@
 #include "Modules/CellPad.h"
 #include "Modules/CellResc.h"
 #include "Modules/CellSysUtil.h"
+#include "Modules/CellSpurs.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -105,6 +106,9 @@ void Modules::DoHLECall(uint32_t nid, CellPPU* ppu)
     case 0x0bae8772:
         RETURN(CellGcm::cellVideoOutConfigure(ARG0, ARG1));
         break;
+	case 0x1051d134:
+		RETURN(CellSpurs::cellSpursAttributeEnableSpuPrintfIfAvailable(ARG0, ppu));
+		break;
 	case 0x10db5b1a:
 		printf("cellRescSetDsts(%ld, 0x%08lx)\n", ARG0, ARG1);
 		RETURN(CELL_OK);
@@ -221,6 +225,9 @@ void Modules::DoHLECall(uint32_t nid, CellPPU* ppu)
         SpinlockModule::sysSpinlockInitialize(ARG0, ppu);
         RETURN(CELL_OK);
         break;
+	case 0x95180230:
+		RETURN(CellSpurs::cellSpursAttributeInitialize(ARG0, ARG1, ARG2, ARG3, ARG4, ARG5, ARG6, ppu));
+		break;
     case 0x96328741:
         printf("sysProcessAt_ExitSpawn(0x%08lx)\n", ARG0);
         RETURN(CELL_OK);
@@ -271,6 +278,9 @@ void Modules::DoHLECall(uint32_t nid, CellPPU* ppu)
     case 0xb2fcf2c8:
         RETURN(CellHeap::sys_heap_create_heap(ARG0, ARG1, ARG2));
         break;
+	case 0xb995662e:
+		RETURN(CellSpurs::sysSpuImageLoad(ARG0, ARG1, ppu));
+		break;
     case 0xbd100dbc:
         CellGcm::cellGcmSetTileInfo(ARG0, ARG1, ARG2, ARG3, ARG4, ARG5, ARG6, ARG7, ppu);
         break;
@@ -284,12 +294,18 @@ void Modules::DoHLECall(uint32_t nid, CellPPU* ppu)
     case 0xdc09357e:
         RETURN(CELL_OK);
         break;
+	case 0xe0da8efd:
+		RETURN(CellSpurs::sysSpuImageClose(ARG0, ppu));
+		break;
     case 0xe315a0b2:
         RETURN(CellGcm::cellGcmGetConfiguration(ARG0, ppu));
         break;
     case 0xe558748d:
         RETURN(CellGcm::cellGetResolution(ARG0, ARG1, ppu));
         break;
+	case 0xebe5f72f:
+		RETURN(CellSpurs::sysSpuImageImport(ARG0, ARG1, ARG2, ARG3, ppu));
+		break;
     case 0xecdcf2ab:
         RETURN(VFS::cellFsWrite(ARG0, ARG1, ARG2, ARG3, ppu));
         break;

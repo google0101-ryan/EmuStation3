@@ -2,6 +2,7 @@
 #include "Modules/CellThread.h"
 #include "Modules/CellGcm.h"
 #include "Modules/VFS.h"
+#include "Modules/CellSpurs.h"
 #include "types.h"
 
 #include <stdio.h>
@@ -70,11 +71,19 @@ uint32_t sysMMapperSearchAndMapMemory(uint32_t start_addr, uint32_t mem_id, uint
     return CELL_OK;
 }
 
+uint64_t spuId = 0;
+uint32_t sys_raw_spu_create(uint64_t spuIdPtr, CellPPU* ppu)
+{
+	ppu->GetManager()->Write32(spuIdPtr, spuId++);
+	return CELL_OK;
+}
+
 #define ARG0 ppu->GetReg(3)
 #define ARG1 ppu->GetReg(4)
 #define ARG2 ppu->GetReg(5)
 #define ARG3 ppu->GetReg(6)
 #define ARG4 ppu->GetReg(7)
+#define ARG5 ppu->GetReg(8)
 #define RETURN(x) ppu->SetReg(3, x)
 
 uint32_t kernel_id = 1;
@@ -139,9 +148,30 @@ void Syscalls::DoSyscall(CellPPU *ppu)
 		printf("sys_time_get_timebase_frequency()\n");
 		RETURN(80000000ull);
 		break;
+	case 0x0A0:
+		RETURN(sys_raw_spu_create(ARG0, ppu));
+		break;
 	case 0x0A9:
 		printf("sys_util_initialize(%ld, %ld)\n", ARG0, ARG1);
 		RETURN(CELL_OK);
+		break;
+	case 0x0AA:
+		RETURN(CellSpurs::sysSpuThreadGroupCreate(ARG0, ARG1, ARG2, ARG3, ppu));
+		break;
+	case 0x0AC:
+		RETURN(CellSpurs::sysSpuThreadInitialize(ARG0, ARG1, ARG2, ARG3, ARG4, ARG5, ppu));
+		break;
+	case 0x0AD:
+		RETURN(CellSpurs::sysSpuThreadGroupStart(ARG0));
+		break;
+	case 0x0B2:
+		RETURN(CellSpurs::sysSpuThreadGroupJoin(ARG0, ARG1, ARG2, ppu));
+		break;
+	case 0x0B8:
+		RETURN(CellSpurs::sysSpuThreadWriteSnr(ARG0, ARG1, ARG2));
+		break;
+	case 0x0BB:
+		RETURN(CellSpurs::sysSpuThreadSetSpuCfg(ARG0, ARG1));
 		break;
     case 0x14A:
         RETURN(sysMMapperAllocateAddress(ARG0, ARG1, ARG2, ARG3, ppu));
@@ -186,6 +216,7 @@ void Syscalls::DoSyscall(CellPPU *ppu)
         RETURN(CELL_OK);
         break;
     default:
+		ppu->GetManager()->DumpRam();
         printf("[LV2]: unknown syscall 0x%04lx\n", ppu->GetReg(11));
         exit(1);
     }

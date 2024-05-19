@@ -1,6 +1,7 @@
 #pragma once
 
 #include "kernel/Memory.h"
+#include "cpu/SPU.h"
 
 #include <unordered_map>
 #include <functional>
@@ -260,6 +261,7 @@ private:
     void Andc(uint32_t opcode); // 0x1F 0x3C
 	void Mulhw(uint32_t opcode); // 0x1F 0x4B
 	void Ldarx(uint32_t opcode); // 0x1F 0x54
+	void Lbzx(uint32_t opcode); // 0x1F 0x57
 	void Lvx(uint32_t opcode); // 0x1F 0x67
     void Neg(uint32_t opcode); // 0x1F 0x68
     void Nor(uint32_t opcode); // 0x1F 0x7C
@@ -352,4 +354,6 @@ public:
 
     void Run();
     void Dump();
+
+	SPU* spus[6];
 };

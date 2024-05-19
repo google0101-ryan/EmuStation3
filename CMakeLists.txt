@@ -7,6 +7,7 @@ set(CXX_STANDARD c++23)
 set(SOURCES src/main.cpp
             src/cpu/PPU.cpp
             src/cpu/PPUInstrs.cpp
+            src/cpu/SPU.cpp
             src/rsx/rsx.cpp
             src/rsx/VPE.cpp
             src/kernel/Memory.cpp
@@ -20,6 +21,7 @@ set(SOURCES src/main.cpp
             src/kernel/Modules/CellPad.cpp
             src/kernel/Modules/CellResc.cpp
             src/kernel/Modules/CellSysUtil.cpp
+            src/kernel/Modules/CellSpurs.cpp
             src/kernel/Syscall.cpp
             src/loaders/Elf.cpp)
 
