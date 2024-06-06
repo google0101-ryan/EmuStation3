@@ -4,7 +4,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <stdexcept>
-#include <format>
 #include <cstring>
 #include <fstream>
 #include <rsx/rsx.h>
@@ -71,11 +70,11 @@ uint8_t* MemoryManager::GetRawPtr(uint64_t offs)
 void MemoryManager::DumpRam()
 {
     std::ofstream out("mem.bin");
-    out.write((char*)main_mem->data, 0x10000000ULL);
+    out.write((char*)main_mem->data, 0x2FFE0000);
     out.close();
     
     out.open("stack.bin");
-    out.write((char*)stack->data, 0x10000);
+    out.write((char*)stack->data, 0x10000000);
     out.close();
 
     out.open("rsx_cmd.bin");
@@ -99,12 +98,13 @@ void MemoryManager::Write8(uint32_t addr, uint8_t data, bool slow)
             
             Write8(addr, data, true);
         }
-
+        
         pages[page][page_offs] = data;
     }
     else
     {
-        throw std::runtime_error(std::format("Error: Write {:#04x} to unknown addr {:#010x}", data, addr));
+        printf("Error: Write 0x%04x to unknown addr 0x%08x", data, addr);
+        throw std::runtime_error("Error: Write to unknown addr");
     }
 }
 
@@ -125,7 +125,8 @@ void MemoryManager::Write16(uint32_t addr, uint16_t data, bool slow)
     }
     else
     {
-        throw std::runtime_error(std::format("Error: Write16 {:#04x} to unknown addr {:#010x}", data, addr));
+        printf("Error: Write16 0x%04x to unknown addr 0x%08x", data, addr);
+        throw std::runtime_error("Error: Write16 to unknown addr");
     }
 }
 
@@ -155,7 +156,7 @@ void MemoryManager::Write32(uint32_t addr, uint32_t data, bool slow)
 			if (addr & 0xF0000)
 			{
 				printf("Write to problem storage register 0x%04x on SPU %d\n", addr & 0xFFFF, spu);
-				g_spus[spu]->WriteProblemStorage(addr & 0xFFFF, data);
+				g_spus[spu]->WriteProblemStorage(addr & 0x1FFFF, data);
 				return;
 			}
 			else
@@ -163,8 +164,9 @@ void MemoryManager::Write32(uint32_t addr, uint32_t data, bool slow)
 				printf("Write to SPU %d local store\n", spu);
 			}
 		}
-
-        throw std::runtime_error(std::format("Error: Write32 {:#04x} to unknown addr {:#010x}", data, addr));
+        
+        printf("Error: Write32 0x%04x to unknown addr 0x%08x", data, addr);
+        throw std::runtime_error("Error: Write32 to unknown addr");
     }
     
     if (rsx_control_addr && addr == rsx_control_addr)
@@ -193,7 +195,8 @@ void MemoryManager::Write64(uint32_t addr, uint64_t data, bool slow)
     }
     else
     {
-        throw std::runtime_error(std::format("Error: Write64 {:#04x} to unknown addr {:#010x}", data, addr));
+        printf("Error: Write64 0x%08lx to unknown addr 0x%08x", data, addr);
+        throw std::runtime_error("Error: Write64 to unknown addr");
     }
 }
 
@@ -214,7 +217,8 @@ uint8_t MemoryManager::Read8(uint32_t addr, bool slow)
     }
     else
     {
-        throw std::runtime_error(std::format("Error: Read8 from unknown addr {:#010x}", addr));
+        printf("Error: Read8 from unknown addr 0x%08x\n", addr);
+        throw std::runtime_error("Error: Read8 from unknown addr");
     }
 }
 
@@ -235,7 +239,8 @@ uint16_t MemoryManager::Read16(uint32_t addr, bool slow)
     }
     else
     {
-        throw std::runtime_error(std::format("Error: Read16 from unknown addr {:#010x}", addr));
+        printf("Error: Read16 from unknown addr 0x%08x", addr);
+        throw std::runtime_error("Error: Read16 from unknown addr");
     }
 }
 
@@ -271,8 +276,9 @@ uint32_t MemoryManager::Read32(uint32_t addr, bool slow)
 				printf("Read from SPU %d local store\n", spu);
 			}
 		}
-
-        throw std::runtime_error(std::format("Error: Read32 from unknown addr {:#010x}", addr));
+        
+        printf("Error: Read from unknown addr 0x%08x", addr);
+        throw std::runtime_error("Error: Read32 from unknown addr");
     }
 }
 
@@ -293,8 +299,8 @@ uint64_t MemoryManager::Read64(uint32_t addr, bool slow)
     }
     else
     {
-        printf("Unmapped addr 0x%08lx!\n", addr);
-        throw std::runtime_error(std::format("Error: Read64 from unknown addr {:#010x}", addr).c_str());
+        printf("Unmapped addr 0x%08x!\n", addr);
+        throw std::runtime_error("Error: Read64 from unknown addr");
     }
 }
 
@@ -332,6 +338,31 @@ uint64_t MemoryBlock::Alloc(uint64_t size)
     }
 
     throw std::runtime_error("OOM Error!");
+}
+
+void MemoryBlock::Free(uint64_t addr)
+{
+    assert(addr >= begin && addr < (begin+len));
+
+    // Find the block corresponding with addr
+    bool found_addr = false;
+
+    for (int i = 0; i < used_mem.size(); i++)
+    {
+        printf("0x%08lx\n", used_mem[i].addr);
+        if (used_mem[i].addr == addr)
+        {
+            used_mem.erase(used_mem.begin()+i);
+            found_addr = true;
+            break;
+        }
+    }
+
+    if (!found_addr)
+    {
+        printf("Could not free: no such address 0x%08lx\n", addr);
+        exit(1);
+    }
 }
 
 void MemoryBlock::MarkUsed(uint32_t addr, uint64_t size)

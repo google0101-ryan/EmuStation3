@@ -200,6 +200,7 @@ private:
     uint8_t IsCR(const uint32_t bit) const {return (GetCR(bit >> 2) & GetCRBit(bit)) ? 1 : 0;}
 
     void G_04(uint32_t opcode); // 0x04
+    void Vaddfp(uint32_t opcode); // 0x04 0x0A
 	void Vsel(uint32_t opcode); // 0x04 0x02A
 	void Vperm(uint32_t opcode); // 0x04 0x02B
 	void Vsldoi(uint32_t opcode); // 0x04 0x02C
@@ -234,6 +235,7 @@ private:
     void Oris(uint32_t opcode); // 0x19
     void Xori(uint32_t opcode); // 0x1A
     void Xoris(uint32_t opcode); // 0x1B
+    void Andi(uint32_t opcode); // 0x1C
     void G_1E(uint32_t opcode); //0x1E
     void Rldicl(uint32_t opcode); // 0x1E 0x00
     void Rldicr(uint32_t opcode); // 0x1E 0x01
@@ -259,22 +261,26 @@ private:
     void Subf(uint32_t opcode); // 0x1F 0x28
     void Cntlzd(uint32_t opcode); // 0x1F 0x3A
     void Andc(uint32_t opcode); // 0x1F 0x3C
+    void Mulhd(uint32_t opcode); // 0x1F 0x49
 	void Mulhw(uint32_t opcode); // 0x1F 0x4B
 	void Ldarx(uint32_t opcode); // 0x1F 0x54
 	void Lbzx(uint32_t opcode); // 0x1F 0x57
 	void Lvx(uint32_t opcode); // 0x1F 0x67
     void Neg(uint32_t opcode); // 0x1F 0x68
     void Nor(uint32_t opcode); // 0x1F 0x7C
+    void Subfe(uint32_t opcode); // 0x1F 0x88
     void Mtocrf(uint32_t opcode); // 0x1F 0x90
     void Stdx(uint32_t opcode); // 0x1F 0x95
 	void Stwcx(uint32_t opcode); // 0x1F 0x96
     void Stwx(uint32_t opcode); // 0x1F 0x97
     void Addze(uint32_t opcode); // 0x1F 0xCA
 	void Stdcx(uint32_t opcode); // 0x1F 0xD6
+    void Stbx(uint32_t opcode); // 0x1F 0xD7
     void Stvx(uint32_t opcode); // 0x1F 0xE7
     void Mulld(uint32_t opcode); // 0x1F 0xE9
     void Mullw(uint32_t opcode); // 0x1F 0xEB
     void Add(uint32_t opcode); // 0x1F 0x10A
+    void Lhzx(uint32_t opcode); // 0x1F 0x117
     void Xor(uint32_t opcode); // 0x1F 0x13C
     void Mfspr(uint32_t opcode); // 0x1F 0x153
 	void Mftb(uint32_t opcode); // 0x1F 0x173
@@ -287,13 +293,16 @@ private:
     void Lfsx(uint32_t opcode); // 0x1F 0x217
     void Srw(uint32_t opcode); // 0x1F 0x218
 	void Srd(uint32_t opcode); // 0x1F 0x21B
+    void Lfdx(uint32_t opcode); // 0x1F 0x257
     void Stfsx(uint32_t opcode); // 0x1F 0x297
+    void Sraw(uint32_t opcode); // 0x1F 0x318
     void Srawi(uint32_t opcode); // 0x1F 0x338
     void Sradi(uint32_t opcode); // 0x1F 0x19D & 0x1F 0x33D
     void Extsh(uint32_t opcode); // 0x1F 0x39A
     void Extsb(uint32_t opcode); // 0x1F 0x3BA
     void Stfiwx(uint32_t opcode); // 0x1F 0x3D7
     void Extsw(uint32_t opcode); // 0x1F 0x3DA
+    void Dcbz(uint32_t opcode); // 0x1F 0x3F6
     void Lwz(uint32_t opcode); // 0x20
 	void Lwzu(uint32_t opcode); // 0x21
     void Lbz(uint32_t opcode); // 0x22
@@ -330,16 +339,19 @@ private:
     void Fdiv(uint32_t opcode); // 0x3F 0x012
     void Fadd(uint32_t opcode); // 0x3F 0x015
     void Fmul(uint32_t opcode); // 0x3F 0x019
+    void Fmsub(uint32_t opcode); // 0x3F 0x01C
 	void Fmadd(uint32_t opcode); // 0x3F 0x01D
     void Fneg(uint32_t opcode); // 0x3F 0x028
-    void Fctidz(uint32_t opcode); // 0x3F 0x02F
+    void Fctidz(uint32_t opcode); // 0x3F 0x32F
     void Fmr(uint32_t opcode); // 0x3F 0x048
-    void Fcfid(uint32_t opcode); // 0x3F 0x04E
+    void Fcfid(uint32_t opcode); // 0x3F 0x34E
+    void Fabs(uint32_t opcode); // 0x3F 0x108
 
     void InitInstructionTable();
-
-    bool canDisassemble = false;
 public:
+    bool canDisassemble = false;
+    bool threadSwapped = false;
+
     uint64_t GetStackAddr() {return state.sp;}
 
     uint64_t GetReg(int index) {return state.r[index];}

@@ -42,16 +42,19 @@ CellPPU::CellPPU(MemoryManager& manager)
 
 void CellPPU::RunSubroutine(uint32_t addr)
 {
-	uint32_t oldLr = state.lr;
+    State copy = state;
+
 	uint32_t retAddr = state.pc;
 	state.lr = state.pc;
+    state.pc = addr;
+    printf("Running callback at 0x%08x, 0x%08x\n", state.pc, retAddr);
 
 	while (state.pc != retAddr)
 	{
 		Run();
 	}
 
-	state.lr = oldLr;
+    state = copy;
 }
 
 void CellPPU::Run()
@@ -100,16 +103,54 @@ void CellPPU::Run()
 		return;
 	}
 
-    if (!opcodes[(opcode >> 26) & 0x3F])
+    
+    switch ((opcode >> 26) & 0x3F)
     {
+    case 0x04: CellPPU::G_04(opcode); break;
+    case 0x07: CellPPU::Mulli(opcode); break;
+    case 0x08: CellPPU::Subfic(opcode); break;
+    case 0x0A: CellPPU::Cmpli(opcode); break;
+    case 0x0B: CellPPU::Cmpi(opcode); break;
+    case 0x0C: CellPPU::Addic(opcode); break;
+	case 0x0F: CellPPU::Addis(opcode); break;
+    case 0x0E: CellPPU::Addi(opcode); break;
+    case 0x10: CellPPU::BranchCond(opcode); break;
+    case 0x12: CellPPU::Branch(opcode); break;
+    case 0x13: CellPPU::G_13(opcode); break;
+	case 0x14: CellPPU::Rlwimi(opcode); break;
+    case 0x15: CellPPU::Rlwinm(opcode); break;
+    case 0x17: CellPPU::Rlwnm(opcode); break;
+    case 0x18: CellPPU::Ori(opcode); break;
+    case 0x19: CellPPU::Oris(opcode); break;
+    case 0x1A: CellPPU::Xori(opcode); break;
+    case 0x1B: CellPPU::Xoris(opcode); break;
+    case 0x1C: CellPPU::Andi(opcode); break;
+    case 0x1E: CellPPU::G_1E(opcode); break;
+    case 0x1F: CellPPU::G_1F(opcode); break;
+    case 0x20: CellPPU::Lwz(opcode); break;
+    case 0x21: CellPPU::Lwzu(opcode); break;
+	case 0x22: CellPPU::Lbz(opcode); break;
+    case 0x23: CellPPU::Lbzu(opcode); break;
+    case 0x24: CellPPU::Stw(opcode); break;
+    case 0x25: CellPPU::Stwu(opcode); break;
+    case 0x26: CellPPU::Stb(opcode); break;
+    case 0x27: CellPPU::Stbu(opcode); break;
+    case 0x28: CellPPU::Lhz(opcode); break;
+    case 0x29: CellPPU::Lhzu(opcode); break;
+    case 0x2C: CellPPU::Sth(opcode); break;
+    case 0x30: CellPPU::Lfs(opcode); break;
+    case 0x32: CellPPU::Lfd(opcode); break;
+    case 0x34: CellPPU::Stfs(opcode); break;
+    case 0x35: CellPPU::Stfsu(opcode); break;
+    case 0x36: CellPPU::Stfd(opcode); break;
+    case 0x3A: CellPPU::G_3A(opcode); break;
+    case 0x3B: CellPPU::G_3B(opcode); break;
+    case 0x3E: CellPPU::G_3E(opcode); break;
+    case 0x3F: CellPPU::G_3F(opcode); break;
+    default:
         printf("Unknown opcode 0x%08x\n", opcode);
         throw std::runtime_error("Failed to execute opcode");
     }
-
-    opcodes[(opcode >> 26) & 0x3F](opcode);
-
-	for (int i = 0; i < 6; i++)
-		spus[i]->Run();
 }
 
 void CellPPU::Dump()
@@ -132,5 +173,6 @@ void CellPPU::Dump()
         printf("f%d\t->\t%f (0x%08lx)\n", i, state.fpr[i].f, state.fpr[i].u);
     for (int i = 0; i < 32; i++)
         printf("v%d\t->\t0x%016lx%016lx (%f, %f, %f, %f)\n", i, state.vpr[i].u64[1], state.vpr[i].u64[0], state.vpr[i].f[0], state.vpr[i].f[1], state.vpr[i].f[2], state.vpr[i].f[3]);
-	spus[0]->Dump();
+	for (int i = 0; i < 6; i++)
+        spus[i]->Dump();
 }

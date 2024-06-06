@@ -1,8 +1,10 @@
 #include "CellSpurs.h"
 #include "util.h"
+#include <string.h>
 #include <cpu/PPU.h>
 #include <stdexcept>
 #include <cassert>
+#include <fstream>
 
 BEGIN_BE_STRUCT(Elf32Header)
     uint8_t e_ident[16];
@@ -33,57 +35,6 @@ BEGIN_BE_STRUCT(Elf32Phdr)
 END_BE_STRUCT();
 
 static_assert(sizeof(Elf32Phdr) == 0x20);
-
-enum SpursAttrFlags : uint32_t
-{
-	SAF_NONE                          = 0x00000000,
-	SAF_EXIT_IF_NO_WORK               = 0x00000001,
-	SAF_UNKNOWN_FLAG_30               = 0x00000002,
-	SAF_SECOND_VERSION                = 0x00000004,
-	SAF_UNKNOWN_FLAG_9                = 0x00400000,
-	SAF_UNKNOWN_FLAG_8                = 0x00800000,
-	SAF_UNKNOWN_FLAG_7                = 0x01000000,
-	SAF_SYSTEM_WORKLOAD_ENABLED       = 0x02000000,
-	SAF_SPU_PRINTF_ENABLED            = 0x10000000,
-	SAF_SPU_TGT_EXCLUSIVE_NON_CONTEXT = 0x20000000,
-	SAF_SPU_MEMORY_CONTAINER_SET      = 0x40000000,
-	SAF_UNKNOWN_FLAG_0                = 0x80000000,
-};
-
-uint32_t CellSpurs::cellSpursAttributeInitialize(uint32_t attrPtr, uint32_t revision, 
-													uint32_t sdkVersion, uint32_t nSpus, 
-													int32_t spuPriority, int32_t ppuPriority, 
-													bool exitIfNoWork, CellPPU* ppu)
-{
-	printf("_cellSpursAttributeInitialize(attr=*0x%x, revision=%d, sdkVersion=0x%x, nSpus=%d, spuPriority=%d, ppuPriority=%d, exitIfNoWork=%d)\n",
-		attrPtr, revision, sdkVersion, nSpus, spuPriority, ppuPriority, exitIfNoWork);
-	
-	if (!attrPtr)
-	{
-		return 0x80410711;
-	}
-
-	if (attrPtr & 3)
-	{
-		return 0x80410710;
-	}
-
-	ppu->GetManager()->Write32(attrPtr+0x00, revision);
-	ppu->GetManager()->Write32(attrPtr+0x04, sdkVersion);
-	ppu->GetManager()->Write32(attrPtr+0x08, nSpus);
-	ppu->GetManager()->Write32(attrPtr+0x0C, spuPriority);
-	ppu->GetManager()->Write32(attrPtr+0x10, ppuPriority);
-	ppu->GetManager()->Write8(attrPtr+0x14, exitIfNoWork);
-
-	return CELL_OK;
-}
-
-uint32_t CellSpurs::cellSpursAttributeEnableSpuPrintfIfAvailable(uint32_t attrPtr, CellPPU* ppu)
-{
-	printf("cellSpursAttributeEnableSpuPrintfIfAvailable(attr=*0x%08x)\n", attrPtr);
-	ppu->GetManager()->Write32(attrPtr+0x28, ppu->GetManager()->Read32(attrPtr+0x28) | SAF_SPU_PRINTF_ENABLED);
-	return CELL_OK;
-}
 
 class SpuElfLoader
 {
@@ -173,7 +124,420 @@ private:
 	uint8_t* basePtr;
 };
 
-uint32_t CellSpurs::sysSpuImageImport(uint64_t imagePtr, uint32_t src, uint32_t size, uint32_t arg4, CellPPU* ppu)
+
+
+uint32_t SpuThread::curId = 0x30;
+
+int curGroupId = 20;
+class SpuThreadGroup
+{
+public:
+	SpuThreadGroup()
+	{
+		id = curGroupId++;
+		memset(threads, 0, sizeof(threads));
+	}
+
+	int id;
+	int num;
+	int priority;
+
+	SpuThread* threads[6];
+};
+
+std::unordered_map<int, SpuThreadGroup*> spuGroups;
+std::unordered_map<int, SpuThread*> spuThreads;
+
+uint32_t CellSpu::sysSpuThreadGroupCreate(uint64_t idPtr, int num, int prio, uint64_t attrPtr, CellPPU* ppu)
+{
+	SpuThreadGroup* group = new SpuThreadGroup();
+	group->num = num;
+	group->priority = prio;
+
+	spuGroups[group->id] = group;
+
+	ppu->GetManager()->Write32(idPtr, group->id);
+
+	printf("sysSpuThreadGroupCreate(id=*0x%08lx, num=%d, prio=%d, attr=*0x%08lx)\n", idPtr, num, prio, attrPtr);
+	return CELL_OK;
+}
+
+bool sys_process_is_spu_lockline(uint32_t addr, uint32_t flags)
+{
+	if (!flags || flags & ~3)
+	{
+		return CELL_EINVAL;
+	}
+
+	switch (addr >> 28)
+	{
+	case 0x0:
+	case 0x1:
+	case 0x2:
+	case 0xc:
+	case 0xe:
+		break;
+	case 0xf:
+	{
+		if (flags & 1)
+			return CELL_EPERM;
+		break;
+	}
+	case 0xd:
+		return CELL_EPERM;
+	default:
+		return CELL_EINVAL;
+	}
+
+	return CELL_OK;
+}
+
+SpuThreadGroup* spursThreadGroup;
+
+uint32_t initSpurs(uint32_t spursAddr, uint32_t revision, uint32_t sdkVersion, int nSpus, int spuPriority, int ppuPriority, uint32_t flags, char* prefix, CellPPU* ppu)
+{
+	if (!spursAddr)
+	{
+		return 0x80410711;
+	}
+
+	if ((spursAddr & 0x7f) != 0)
+	{
+		return 0x80410710;
+	}
+
+	if (sys_process_is_spu_lockline(spursAddr, 2) != 0)
+	{
+		return 0x80410709;
+	}
+
+	bool isVer1 = !(flags & 4);
+
+	if (isVer1)
+		memset(ppu->GetManager()->GetRawPtr(spursAddr), 0, 0x1000);
+	else
+		memset(ppu->GetManager()->GetRawPtr(spursAddr), 0, 0x2000);
+	
+	ppu->GetManager()->Write32(spursAddr+0xda0, revision);
+	ppu->GetManager()->Write32(spursAddr+0xda4, sdkVersion);
+	ppu->GetManager()->Write64(spursAddr+0xd20, 0xffffffff);
+	ppu->GetManager()->Write64(spursAddr+0xd28, 0xffffffff);
+	ppu->GetManager()->Write32(spursAddr+0xd80, flags);
+	if (prefix)
+	{
+		memcpy(ppu->GetManager()->GetRawPtr(spursAddr+0xd8c), prefix, 15);
+	}
+	if (isVer1)
+	{
+		ppu->GetManager()->Write32(spursAddr+0xb0, 0xffff);
+	}
+	ppu->GetManager()->Write8(spursAddr+0xce, 0);
+	ppu->GetManager()->Write8(spursAddr+0xcc, 0);
+	ppu->GetManager()->Write8(spursAddr+0xcd, 0);
+	for (int i = 0; i < 8; i++)
+	{
+		ppu->GetManager()->Write8(spursAddr+0xc0+i, 0xff);
+	}
+	ppu->GetManager()->Write64(spursAddr+0xd00, 0x100);
+	ppu->GetManager()->Write64(spursAddr+0xd08, 0);
+	ppu->GetManager()->Write32(spursAddr+0xd10, 0x2200);
+	ppu->GetManager()->Write8(spursAddr+0xd14, 0xff);
+	for (int i = 0; i < 16; i++)
+	{
+		// TODO: Create semas and assign them here
+	}
+	if ((flags & 4) != 0)
+	{
+		printf("TODO: Spurs2\n");
+		exit(1);
+	}
+	// TODO: Create srv sema and assign it here
+	ppu->GetManager()->Write32(spursAddr + 0x98c, 0xffffffff);
+	ppu->GetManager()->Write64(spursAddr + 0x990, 0);
+	ppu->GetManager()->Write32(spursAddr + 0x988, 0xffffffff);
+	ppu->GetManager()->Write8(spursAddr + 0x76, nSpus);
+	ppu->GetManager()->Write32(spursAddr + 0xd84, spuPriority);
+
+	std::ifstream file("spukernel.elf", std::ios::ate | std::ios::binary);
+	size_t size = file.tellg();
+	file.seekg(0, std::ios::beg);
+	uint8_t* buf = new uint8_t[size];
+	file.read((char*)buf, size);
+	file.close();
+	SpuElfLoader loader(buf);
+
+	spursThreadGroup = new SpuThreadGroup();
+	spuGroups[spursThreadGroup->id] = spursThreadGroup;
+
+	for (int i = 0; i < nSpus; i++)
+	{
+		spursThreadGroup->threads[i] = new SpuThread();
+		auto& t = spursThreadGroup->threads[i];
+		t->arg0 = (uint64_t)i << 0x20;
+		t->arg1 = spursAddr;
+		t->entry = loader.GetEntry();
+
+		// Load the kernel
+		int count = loader.GetPhdrCount();
+		for (int j = 0; j < count; j++)
+		{
+			auto phdr = loader.GetPhdr(j);
+
+			uint8_t* buf = loader.GetPhdrBuf(j);
+			for (int k = 0; k < phdr->p_filesz; k++)
+			{
+				ppu->spus[i]->Write8(phdr->p_paddr+k, buf[k]);
+			}
+		}
+		
+		ppu->spus[i]->SetThread(spursThreadGroup->threads[i]);
+	}
+	
+	return CELL_OK;
+}
+
+uint32_t CellSpu::cellSpursAttributeInitialize(uint32_t attrPtr, uint32_t revision, 
+													uint32_t sdkVersion, uint32_t nSpus, 
+													int32_t spuPriority, int32_t ppuPriority, 
+													bool exitIfNoWork, CellPPU* ppu)
+{
+	printf("_cellSpursAttributeInitialize(attr=*0x%x, revision=%d, sdkVersion=0x%x, nSpus=%d, spuPriority=%d, ppuPriority=%d, exitIfNoWork=%d)\n",
+		attrPtr, revision, sdkVersion, nSpus, spuPriority, ppuPriority, exitIfNoWork);
+	
+	if (!attrPtr)
+	{
+		return 0x80410711;
+	}
+
+	if (attrPtr & 3)
+	{
+		return 0x80410710;
+	}
+
+	ppu->GetManager()->Write32(attrPtr+0x00, revision);
+	ppu->GetManager()->Write32(attrPtr+0x04, sdkVersion);
+	ppu->GetManager()->Write32(attrPtr+0x08, nSpus);
+	ppu->GetManager()->Write32(attrPtr+0x0C, spuPriority);
+	ppu->GetManager()->Write32(attrPtr+0x10, ppuPriority);
+	ppu->GetManager()->Write8(attrPtr+0x14, exitIfNoWork);
+
+	return CELL_OK;
+}
+
+uint32_t CellSpu::cellSpursAttributeEnableSpuPrintfIfAvailable(uint32_t attrPtr, CellPPU* ppu)
+{
+	printf("cellSpursAttributeEnableSpuPrintfIfAvailable(attr=*0x%08x)\n", attrPtr);
+	ppu->GetManager()->Write32(attrPtr+0x28, ppu->GetManager()->Read32(attrPtr+0x28) | 0x10000000);
+	return CELL_OK;
+}
+
+uint32_t CellSpu::cellSpursAttributeSetNamePrefix(uint32_t attrPtr, uint32_t namePtr, uint64_t size, CellPPU* ppu)
+{
+	printf("cellSpursAttributeSetNamePrefix(0x%08x, %s)\n", attrPtr, ppu->GetManager()->GetRawPtr(namePtr));
+	memcpy(ppu->GetManager()->GetRawPtr(attrPtr+0x15), ppu->GetManager()->GetRawPtr(namePtr), size);
+
+	return CELL_OK;
+}
+
+uint32_t CellSpu::cellSpursInitializeWithAttribute2(uint32_t spursPtr, uint32_t attrPtr, CellPPU *ppu)
+{
+	printf("cellSpursInitializeWithAttribute2(0x%08x, 0x%08x)\n", spursPtr, attrPtr);
+
+	// TODO: Write out the massive structure that holds all SPURS information
+
+    return CELL_OK;
+}
+
+uint32_t CellSpu::cellSpursTasksetAttributeInitialize(uint32_t attrPtr, uint32_t revision, uint32_t sdkVersion, uint64_t args, uint32_t priorityPtr, uint32_t maxContention, CellPPU *ppu)
+{
+	printf("cellSpursTasksetAttributeInitialize(0x%08x, 0x%08x, 0x%08x, 0x%08lx, 0x%08x, 0x%08x)\n", attrPtr, revision, sdkVersion, args, priorityPtr);
+
+	if (!attrPtr)
+	{
+		return 0x80410911;
+	}
+
+	uint8_t priority[8];
+
+	for (uint32_t i = 0; i < 8; i++)
+	{
+		priority[i] = ppu->GetManager()->Read8(priorityPtr);
+		if (priority[i] > 0xF)
+		{
+			return 0x80410902;
+		}
+	}
+
+	ppu->GetManager()->Write32(attrPtr+0x00, revision);
+	ppu->GetManager()->Write32(attrPtr+0x04, sdkVersion);
+	ppu->GetManager()->Write32(attrPtr+0x08, args);
+	ppu->GetManager()->Write32(attrPtr+0x20, 6400);
+	ppu->GetManager()->Write32(attrPtr+0x18, maxContention);
+	memcpy(ppu->GetManager()->GetRawPtr(attrPtr+0x10), priority, 8);
+
+    return CELL_OK;
+}
+
+uint32_t CellSpu::cellSpursTasksetAttributeSetName(uint32_t attrPtr, uint32_t namePtr, CellPPU* ppu)
+{
+	const char* name = (const char*)ppu->GetManager()->GetRawPtr(namePtr);
+
+	printf("cellSpursTasksetAttributeSetName(0x%08x, \"%s\")\n", attrPtr, name);
+
+	ppu->GetManager()->Write32(attrPtr+0x1C, namePtr);
+
+    return CELL_OK;
+}
+
+uint32_t CellSpu::cellSpursInitialize(uint32_t spursPtr, int nSpus, int spuPriority, int ppuPriority, bool exitIfNoWork, CellPPU* ppu)
+{
+	return initSpurs(spursPtr, 0, 0, nSpus, spuPriority, ppuPriority, 0, NULL, ppu);
+}
+
+uint32_t sys_spu_thread_group_connect_event_all_threads(uint32_t id, uint32_t eq, uint64_t req, uint32_t spuPtr, CellPPU* ppu)
+{
+	printf("sys_spu_thread_group_connect_event_all_threads(%d, %d, 0x%08lx, 0x%08x)\n", id, eq, req, spuPtr);
+
+	uint8_t port = 0;
+
+	if (!spuGroups[id])
+	{
+		printf("Tried to connect event to non-existant thread queue");
+		exit(1);
+	}
+
+	auto& group = spuGroups[id];
+
+	for (; port < 64; port++)
+	{
+		if (!(req & (1ull << port)))
+		{
+			continue;
+		}
+
+		bool found = true;
+		for (int i = 0; i < 6; i++)
+		{
+			auto& t = group->threads[i];
+
+			if (t)
+			{
+				if (t->spup[port] != 0)
+				{
+					found = false;
+					break;
+				}
+			}
+		}
+
+		if (found)
+		{
+			break;
+		}
+	}
+
+	if (port == 64)
+	{
+		printf("CELL_EISCONN\n");
+		exit(1);
+	}
+
+	for (int i = 0; i < 6; i++)
+	{
+		auto& t = group->threads[i];
+		if (t)
+		{
+			t->spup[port] = eq;
+		}
+	}
+
+	if (spuPtr)
+	{
+		ppu->GetManager()->Write8(spuPtr, port);
+	}
+
+	return CELL_OK;
+}
+
+uint32_t CellSpu::cellSpursAttachLV2EventQueue(uint32_t spursPtr, uint32_t queueId, uint32_t portPtr, int isDynamic, CellPPU* ppu)
+{
+	printf("cellSpursAttachLV2EventQueue(0x%08x, %d, 0x%08x, %d)\n", spursPtr, queueId, portPtr, isDynamic);
+
+	if (!spursPtr || !portPtr)
+	{
+		return 0x80410711;
+	}
+
+	if ((spursPtr & 0x7f) != 0)
+	{
+		return 0x80410710;
+	}
+
+	uint8_t _port = 0x3f;
+	uint64_t portMask = 0;
+
+	if (isDynamic == 0)
+	{
+		_port = ppu->GetManager()->Read8(portPtr);
+		if (_port > 0x3f)
+		{
+			return 0x80410702;
+		}
+	}
+
+	for (uint32_t i = isDynamic ? 0x10 : _port; i <= _port; i++)
+	{
+		portMask |= 1ull << (i);
+	}
+
+	sys_spu_thread_group_connect_event_all_threads(spursThreadGroup->id, queueId, portMask, portPtr, ppu);
+
+	uint64_t portBits = ppu->GetManager()->Read32(spursPtr+0xda8);
+	ppu->GetManager()->Write32(spursPtr+0xda8, portBits | (1ull << ppu->GetManager()->Read8(portPtr)));
+
+	return CELL_OK;
+}
+
+uint32_t CellSpu::cellSpursGetInfo(uint32_t spurs, uint32_t info, CellPPU* ppu)
+{
+	printf("cellSpursGetInfo(0x%08x, 0x%08x)\n", spurs, info);
+
+	if (!spurs || !info)
+	{
+		return 0x80410711;
+	}
+
+	if ((spurs & 0x7f) != 0)
+	{
+		return 0x80410710;
+	}
+
+	ppu->GetManager()->Write32(info+0x00, ppu->GetManager()->Read32(spurs+0x76));
+	ppu->GetManager()->Write32(info+0x04, ppu->GetManager()->Read32(spurs+0xd84));
+	ppu->GetManager()->Write32(info+0x08, ppu->GetManager()->Read32(spurs+0xd88));
+	ppu->GetManager()->Write32(info+0x24, ppu->GetManager()->Read32(spurs+0xd30));
+	ppu->GetManager()->Write32(info+0x28, ppu->GetManager()->Read32(spurs+0xd34));
+	ppu->GetManager()->Write8(info+0x0C, ppu->GetManager()->Read32(spurs+0xd80) & 1);
+	ppu->GetManager()->Write32(info+0x2C, ppu->GetManager()->Read32(spurs+0xd38));
+	ppu->GetManager()->Write8(info+0xd, (ppu->GetManager()->Read32(spurs+0xd80) >> 2) & 1);
+	ppu->GetManager()->Write32(info+0x30, ppu->GetManager()->Read32(spurs+0xd3C));
+	ppu->GetManager()->Write32(info+0x34, ppu->GetManager()->Read32(spurs+0xd40));
+	ppu->GetManager()->Write32(info+0x38, ppu->GetManager()->Read32(spurs+0xd44));
+	ppu->GetManager()->Write32(info+0x3C, ppu->GetManager()->Read32(spurs+0xd48));
+	ppu->GetManager()->Write32(info+0x40, ppu->GetManager()->Read32(spurs+0xd4c));
+	ppu->GetManager()->Write64(info+0x48, ppu->GetManager()->Read64(spurs+0xd20));
+	ppu->GetManager()->Write32(info+0x44, ppu->GetManager()->Read32(spurs+0xd50));
+	ppu->GetManager()->Write64(info+0x50, ppu->GetManager()->Read64(spurs+0xd28));
+	ppu->GetManager()->Write32(info+0x10, ppu->GetManager()->Read64(spurs+0x900) & 0xfffffffc);
+	ppu->GetManager()->Write64(info+0x18, ppu->GetManager()->Read64(spurs+0x948));
+	ppu->GetManager()->Write32(info+0x20, ppu->GetManager()->Read64(spurs+0x900) & 3);
+	memcpy(ppu->GetManager()->GetRawPtr(info+0x58), ppu->GetManager()->GetRawPtr(spurs+0xd8c), 15);
+	ppu->GetManager()->Write32(info+0x68, ppu->GetManager()->Read32(spurs+0xd9b));
+
+	return CELL_OK;	
+}
+
+uint32_t CellSpu::sysSpuImageImport(uint64_t imagePtr, uint32_t src, uint32_t size, uint32_t arg4, CellPPU* ppu)
 {
 	SpuElfLoader* loader = new SpuElfLoader(ppu->GetManager()->GetRawPtr(src));
 
@@ -186,7 +550,7 @@ uint32_t CellSpurs::sysSpuImageImport(uint64_t imagePtr, uint32_t src, uint32_t 
 	return CELL_OK;
 }
 
-uint32_t CellSpurs::sysSpuImageLoad(uint32_t spuIndex, uint64_t imagePtr, CellPPU *ppu)
+uint32_t CellSpu::sysSpuImageLoad(uint32_t spuIndex, uint64_t imagePtr, CellPPU *ppu)
 {
 	SpuElfLoader* elf = (SpuElfLoader*)((uintptr_t)ppu->GetManager()->Read64(imagePtr+0x08));
 
@@ -208,7 +572,7 @@ uint32_t CellSpurs::sysSpuImageLoad(uint32_t spuIndex, uint64_t imagePtr, CellPP
 	return CELL_OK;
 }
 
-uint32_t CellSpurs::sysSpuImageClose(uint64_t imagePtr, CellPPU *ppu)
+uint32_t CellSpu::sysSpuImageClose(uint64_t imagePtr, CellPPU *ppu)
 {
 	SpuElfLoader* elf = (SpuElfLoader*)((uintptr_t)ppu->GetManager()->Read64(imagePtr+0x08));
 
@@ -219,49 +583,15 @@ uint32_t CellSpurs::sysSpuImageClose(uint64_t imagePtr, CellPPU *ppu)
 	return CELL_OK;
 }
 
-uint32_t SpuThread::curId = 0x30;
-
-int curGroupId = 20;
-class SpuThreadGroup
+uint32_t CellSpu::sysSpuThreadInitialize(uint64_t idPtr, uint32_t groupId, uint32_t spuNum, uint64_t imagePtr, uint64_t attrPtr, uint64_t argPtr, CellPPU *ppu)
 {
-public:
-	SpuThreadGroup()
-	{
-		id = curGroupId++;
-	}
-
-	int id;
-	int num;
-	int priority;
-
-	SpuThread* threads[6];
-};
-
-std::unordered_map<int, SpuThreadGroup*> spuGroups;
-std::unordered_map<int, SpuThread*> spuThreads;
-
-uint32_t CellSpurs::sysSpuThreadGroupCreate(uint64_t idPtr, int num, int prio, uint64_t attrPtr, CellPPU* ppu)
-{
-	SpuThreadGroup* group = new SpuThreadGroup();
-	group->num = num;
-	group->priority = prio;
-
-	spuGroups[group->id] = group;
-
-	ppu->GetManager()->Write32(idPtr, group->id);
-
-	printf("sysSpuThreadGroupCreate(id=*0x%08lx, num=%d, prio=%d, attr=*0x%08lx)\n", idPtr, num, prio, attrPtr);
-	return CELL_OK;
-}
-
-uint32_t CellSpurs::sysSpuThreadInitialize(uint64_t idPtr, uint32_t groupId, uint32_t spuNum, uint64_t imagePtr, uint64_t attrPtr, uint64_t argPtr, CellPPU *ppu)
-{
-	uint64_t namePtr = ppu->GetManager()->Read64(attrPtr);
-	uint64_t nameLen = ppu->GetManager()->Read32(attrPtr+8);
+	uint64_t namePtr = ppu->GetManager()->Read32(attrPtr);
+	uint64_t nameLen = ppu->GetManager()->Read32(attrPtr+4);
 
 	std::string name((const char*)ppu->GetManager()->GetRawPtr(namePtr), nameLen);
 
 	printf("sysSpuThreadInitialize(id=*0x%08lx, group=%d, spuNum=%d, imagePtr=*0x%08lx, attrPtr=*0x%08lx, argPtr=*0x%08lx)\n", idPtr, groupId, spuNum, imagePtr, attrPtr, argPtr);
+	printf("name = %s\n", name.c_str());
 
 	SpuThreadGroup* group = spuGroups[groupId];
 
@@ -289,9 +619,9 @@ uint32_t CellSpurs::sysSpuThreadInitialize(uint64_t idPtr, uint32_t groupId, uin
 		auto phdr = elf->GetPhdr(i);
 
 		uint8_t* buf = elf->GetPhdrBuf(i);
-		for (int i = 0; i < phdr->p_filesz; i++)
+		for (int j = 0; j < phdr->p_filesz; j++)
 		{
-			ppu->spus[spuNum]->Write8(phdr->p_paddr+i, buf[i]);
+			ppu->spus[spuNum]->Write8(phdr->p_paddr+j, buf[j]);
 		}
 	}
 
@@ -315,9 +645,11 @@ uint32_t CellSpurs::sysSpuThreadInitialize(uint64_t idPtr, uint32_t groupId, uin
 	return CELL_OK;
 }
 
-uint32_t CellSpurs::sysSpuThreadGroupStart(uint32_t groupId)
+uint32_t CellSpu::sysSpuThreadGroupStart(uint32_t groupId)
 {
 	SpuThreadGroup* group = spuGroups[groupId];
+
+	printf("Found group with id=%d\n", group->id);
 
 	if (!group)
 	{
@@ -326,6 +658,7 @@ uint32_t CellSpurs::sysSpuThreadGroupStart(uint32_t groupId)
 
 	for (int i = 0; i < 6; i++)
 	{
+		printf("%p\n", group->threads[i]);
 		if (group->threads[i])
 			g_spus[i]->SetThread(group->threads[i]);
 	}
@@ -333,7 +666,7 @@ uint32_t CellSpurs::sysSpuThreadGroupStart(uint32_t groupId)
 	return CELL_OK;
 }
 
-uint32_t CellSpurs::sysSpuThreadGroupJoin(uint32_t groupId, uint64_t causePtr, uint64_t statusPtr, CellPPU* ppu)
+uint32_t CellSpu::sysSpuThreadGroupJoin(uint32_t groupId, uint64_t causePtr, uint64_t statusPtr, CellPPU* ppu)
 {
 	if (!spuGroups.contains(groupId))
 	{
@@ -360,7 +693,7 @@ uint32_t CellSpurs::sysSpuThreadGroupJoin(uint32_t groupId, uint64_t causePtr, u
 	return CELL_OK;
 }
 
-uint32_t CellSpurs::sysSpuThreadSetSpuCfg(uint32_t threadId, uint64_t value)
+uint32_t CellSpu::sysSpuThreadSetSpuCfg(uint32_t threadId, uint64_t value)
 {
 	if (!spuThreads.contains(threadId))
 	{
@@ -374,7 +707,7 @@ uint32_t CellSpurs::sysSpuThreadSetSpuCfg(uint32_t threadId, uint64_t value)
 	return CELL_OK;
 }
 
-uint32_t CellSpurs::sysSpuThreadWriteSnr(uint32_t id, int number, uint32_t value)
+uint32_t CellSpu::sysSpuThreadWriteSnr(uint32_t id, int number, uint32_t value)
 {
 	assert(number == 0);
 

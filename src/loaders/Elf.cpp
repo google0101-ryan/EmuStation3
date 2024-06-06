@@ -1,7 +1,6 @@
 #include "Elf.h"
 #include "kernel/Memory.h"
 
-#include <format>
 #include <cassert>
 #include <cstring>
 #include <unordered_map>
@@ -59,7 +58,7 @@ ElfLoader::ElfLoader(std::string fname, MemoryManager &mman)
     }
 
     if (cur_p[0] != '\x7f' || cur_p[1] != 'E' || cur_p[2] != 'L' || cur_p[3] != 'F')
-        throw std::runtime_error(std::format("Couldn't process file {}: invalid magic", fname));
+        throw std::runtime_error("Couldn't process file: invalid magic");
 
     printf("[ELF]: Reading header\n");
     
@@ -69,17 +68,17 @@ ElfLoader::ElfLoader(std::string fname, MemoryManager &mman)
     hdr.Read_e_type(cur_p);
 
     if (hdr.e_type != 2)
-        throw std::runtime_error(std::format("Couldn't process file {}: invalid type {}", fname, hdr.e_type));
+        throw std::runtime_error("Couldn't process file: invalid type");
     
     hdr.Read_e_machine(cur_p);
 
     if (hdr.e_machine != 21)
-        throw std::runtime_error(std::format("Couldn't process file {}: invalid machine {}", fname, hdr.e_machine));
+        throw std::runtime_error("Couldn't process file: invalid machine");
     
     hdr.Read_e_version(cur_p);
 
     if (hdr.e_version != 1)
-        throw std::runtime_error(std::format("Couldn't process file {}: invalid version {}", fname, hdr.e_version));
+        throw std::runtime_error("Couldn't process file: invalid version");
     
     hdr.Read_e_entry(cur_p);
 

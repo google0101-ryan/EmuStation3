@@ -109,9 +109,13 @@ private:
 	uint32_t mfc_tag_mask;
 	// signal1
 	std::queue<uint32_t> signal1;
+	// in mbox
+	bool waitingOnInMbox = false;
+	std::queue<uint32_t> inMbox;
 
 	void ori(uint32_t instr); // 0x08
 	void brz(uint32_t instr); // 0x40
+	void stqa(uint32_t instr); // 0x4A
 	void brnz(uint32_t instr); // 0x42
 	void stqr(uint32_t instr); // 0x47
 	void br(uint32_t instr); // 0x64
@@ -131,27 +135,37 @@ private:
 	void lqd(uint32_t instr); // 0x34
 	void lqr(uint32_t instr); // 0x36
 	void cgti(uint32_t instr); // 0x4c
+	void clgti(uint32_t instr); // 0x5c
 	void clgtbi(uint32_t instr); // 0x5e
 	void ceqi(uint32_t instr); // 0x7c
 
 	void rdch(uint32_t instr); // 0x0d
 	void sf(uint32_t instr); // 0x40
+	void bg(uint32_t instr); // 0x42
 	void sfh(uint32_t instr); // 0x48
 	void a(uint32_t instr); // 0xc0
+	void cg(uint32_t instr); // 0xc2
 	void rotmi(uint32_t instr); // 0x79
 	void rotmai(uint32_t instr); // 0x7a
 	void shli(uint32_t instr); // 0x7b
 	void wrch(uint32_t instr); // 0x10d
 	void stqx(uint32_t instr); // 0x144
 	void bi(uint32_t instr); // 0x1a8
+	void bisl(uint32_t instr); // 0x1a9
 	void hbr(uint32_t instr); // 0x1ac
+	void fsm(uint32_t instr); // 0x1b4
 	void lqx(uint32_t instr); // 0x1c4
 	void rotqby(uint32_t instr); // 0x1dc
 	void cbd(uint32_t instr); // 0x1f4
 	void cwd(uint32_t instr); // 0x1f6
+	void cdd(uint32_t instr); // 0x1f7
 	void rotqbyi(uint32_t instr); // 0x1fc
 	void rotqmbyi(uint32_t instr); // 0x1fd
 	void shlqbyi(uint32_t instr); // 0x1ff
+	void addx(uint32_t instr); // 0x340
+	void sfx(uint32_t instr); // 0x342
+	void mpyh(uint32_t instr); // 0x3C5
+	void mpyu(uint32_t instr); // 0x3CC
 
 	void selb(uint32_t instr); // 0x8
 	void shufb(uint32_t instr); // 0xb

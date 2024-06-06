@@ -29,6 +29,7 @@ public:
     MemoryBlock(uint64_t start, uint64_t end, MemoryManager* manager, bool map = true);
 
     uint64_t Alloc(uint64_t size);
+    void Free(uint64_t addr);
     void MarkUsed(uint32_t addr, uint64_t size);
 
     uint64_t GetStart() const {return begin;}

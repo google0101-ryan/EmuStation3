@@ -5,7 +5,6 @@
 #include <stdio.h>
 #include <bit>
 #include <stdexcept>
-#include <format>
 #include <cassert>
 #include <string.h>
 #include <emmintrin.h>
@@ -117,47 +116,6 @@ using std::placeholders::_1;
 
 void CellPPU::InitInstructionTable()
 {
-    opcodes[0x04] = std::bind(&CellPPU::G_04, this, _1);
-	opcodes[0x07] = std::bind(&CellPPU::Mulli, this, _1);
-    opcodes[0x08] = std::bind(&CellPPU::Subfic, this, _1);
-    opcodes[0x0A] = std::bind(&CellPPU::Cmpli, this, _1);
-    opcodes[0x0B] = std::bind(&CellPPU::Cmpi, this, _1);
-    opcodes[0x0C] = std::bind(&CellPPU::Addic, this, _1);
-	opcodes[0x0F] = std::bind(&CellPPU::Addis, this, _1);
-    opcodes[0x0E] = std::bind(&CellPPU::Addi, this, _1);
-    opcodes[0x10] = std::bind(&CellPPU::BranchCond, this, _1);
-    opcodes[0x12] = std::bind(&CellPPU::Branch, this, _1);
-    opcodes[0x13] = std::bind(&CellPPU::G_13, this, _1);
-	opcodes[0x14] = std::bind(&CellPPU::Rlwimi, this, _1);
-    opcodes[0x15] = std::bind(&CellPPU::Rlwinm, this, _1);
-    opcodes[0x17] = std::bind(&CellPPU::Rlwnm, this, _1);
-    opcodes[0x18] = std::bind(&CellPPU::Ori, this, _1);
-    opcodes[0x19] = std::bind(&CellPPU::Oris, this, _1);
-    opcodes[0x1A] = std::bind(&CellPPU::Xori, this, _1);
-    opcodes[0x1B] = std::bind(&CellPPU::Xoris, this, _1);
-    opcodes[0x1E] = std::bind(&CellPPU::G_1E, this, _1);
-    opcodes[0x1F] = std::bind(&CellPPU::G_1F, this, _1);
-    opcodes[0x20] = std::bind(&CellPPU::Lwz, this, _1);
-    opcodes[0x21] = std::bind(&CellPPU::Lwzu, this, _1);
-	opcodes[0x22] = std::bind(&CellPPU::Lbz, this, _1);
-    opcodes[0x23] = std::bind(&CellPPU::Lbzu, this, _1);
-    opcodes[0x24] = std::bind(&CellPPU::Stw, this, _1);
-    opcodes[0x25] = std::bind(&CellPPU::Stwu, this, _1);
-    opcodes[0x26] = std::bind(&CellPPU::Stb, this, _1);
-    opcodes[0x27] = std::bind(&CellPPU::Stbu, this, _1);
-    opcodes[0x28] = std::bind(&CellPPU::Lhz, this, _1);
-    opcodes[0x29] = std::bind(&CellPPU::Lhzu, this, _1);
-    opcodes[0x2C] = std::bind(&CellPPU::Sth, this, _1);
-    opcodes[0x30] = std::bind(&CellPPU::Lfs, this, _1);
-    opcodes[0x32] = std::bind(&CellPPU::Lfd, this, _1);
-    opcodes[0x34] = std::bind(&CellPPU::Stfs, this, _1);
-    opcodes[0x35] = std::bind(&CellPPU::Stfsu, this, _1);
-    opcodes[0x36] = std::bind(&CellPPU::Stfd, this, _1);
-    opcodes[0x3A] = std::bind(&CellPPU::G_3A, this, _1);
-    opcodes[0x3B] = std::bind(&CellPPU::G_3B, this, _1);
-    opcodes[0x3E] = std::bind(&CellPPU::G_3E, this, _1);
-    opcodes[0x3F] = std::bind(&CellPPU::G_3F, this, _1);
-
     InitRotateMask();
 }
 
@@ -183,6 +141,9 @@ void CellPPU::G_04(uint32_t opcode)
 {
     switch (opcode & 0x7FF)
     {
+    case 0x00A:
+        Vaddfp(opcode);
+        break;
 	case 0x14A:
 		Vrsqrtefp(opcode);
 		break;
@@ -237,6 +198,19 @@ void CellPPU::G_04(uint32_t opcode)
 			}
 		}
     }
+}
+
+void CellPPU::Vaddfp(uint32_t opcode)
+{
+	int va = vA;
+	int vb = vB;
+	int vd = vD;
+
+    for (int i = 0; i < 4; i++)
+        state.vpr[vd].f[i] = state.vpr[va].f[i] + state.vpr[vb].f[i];
+    
+    if (canDisassemble)
+        printf("vaddfp v%d,v%d,v%d\n", vd, va, vb);
 }
 
 void CellPPU::Vsel(uint32_t opcode)
@@ -686,7 +660,10 @@ void CellPPU::Bcctr(uint32_t opcode)
                  && syscall_nids.find(lastBranchTarget) != syscall_nids.end())
         {
             Modules::DoHLECall(syscall_nids[state.r[12]], this);
-            state.pc = state.lr;
+            if (threadSwapped)
+                threadSwapped = false;
+            else
+                state.pc = state.lr;
         }
         else
         {
@@ -802,6 +779,18 @@ void CellPPU::Xoris(uint32_t opcode)
 
     if (canDisassemble)
         printf("xoris r%d, r%d, 0x%04lx\n", ra, rs, ui << 16);
+}
+
+void CellPPU::Andi(uint32_t opcode)
+{
+    int rs = ((opcode >> 21) & 0x1F);
+    int ra = ((opcode >> 16) & 0x1F);
+    uint64_t ui = si_d;
+
+    state.r[ra] = state.r[rs] & ui;
+
+    if (canDisassemble)
+        printf("andi r%d, r%d, 0x%04lx\n", ra, rs, ui);
 }
 
 void CellPPU::G_1E(uint32_t opcode)
@@ -963,6 +952,9 @@ void CellPPU::G_1F(uint32_t opcode)
     case 0x03C:
         Andc(opcode);
         break;
+    case 0x049:
+        Mulhd(opcode);
+        break;
 	case 0x04B:
 		Mulhw(opcode);
 		break;
@@ -980,6 +972,9 @@ void CellPPU::G_1F(uint32_t opcode)
         break;
     case 0x0D6:
         Stdcx(opcode);
+        break;
+    case 0x0D7:
+        Stbx(opcode);
         break;
     case 0x0CA:
         Addze(opcode);
@@ -1014,6 +1009,9 @@ void CellPPU::G_1F(uint32_t opcode)
     case 0x116:
         if (canDisassemble)
             printf("DCTB\n");
+        break;
+    case 0x117:
+        Lhzx(opcode);
         break;
     case 0x13C:
         Xor(opcode);
@@ -1081,8 +1079,11 @@ void CellPPU::G_1F(uint32_t opcode)
     case 0x3DA:
         Extsw(opcode);
         break;
+    case 0x3F6:
+        Dcbz(opcode);
+        break;
     default:
-        printf(std::format("Unhandled opcode ({:#x}) ({:#x})\n", field, opcode).c_str());
+        printf("Unhandled opcode (0x%02x) (0x%02x)\n", field, opcode);
         throw std::runtime_error("Unable to execute Group 1F opcode");
     }
 }
@@ -1414,6 +1415,21 @@ void CellPPU::Andc(uint32_t opcode)
         printf("andc r%d,r%d,r%d\n", ra, rs, rb);
 }
 
+void CellPPU::Mulhd(uint32_t opcode)
+{
+    int rt = rt_d;
+    int ra = ra_d;
+    int rb = rb_d;
+
+	state.r[rt] = ((__int128_t)(int64_t)state.r[ra] * (__int128_t)(int64_t)state.r[rb]) >> 64;
+
+	if (opcode & 1)
+		UpdateCR0<int64_t>(state.r[rt]);
+
+	if (canDisassemble)
+		printf("mulhd r%d,r%d,r%d\n", rt, ra, rb);
+}
+
 void CellPPU::Mulhw(uint32_t opcode)
 {
 	int rt = rt_d;
@@ -1676,6 +1692,18 @@ void CellPPU::Stdcx(uint32_t opcode)
         printf("stdcx. r%d, r%d(r%d)\n", rs, ra, rb);
 }
 
+void CellPPU::Stbx(uint32_t opcode)
+{
+    int rs = rs_d;
+    int ra = ra_d;
+    int rb = rb_d;
+
+    manager.Write8((ra ? state.r[ra] + state.r[rb] : state.r[rb]), state.r[rs]);
+
+    if (canDisassemble)
+        printf("stbx r%d,r%d,r%d\n", rs, ra, rb);
+}
+
 void CellPPU::Stvx(uint32_t opcode)
 {
     int vs = vS;
@@ -1761,6 +1789,18 @@ void CellPPU::Add(uint32_t opcode)
     }
     else if (canDisassemble)
         printf("add r%d,r%d,r%d\n", rt, ra, rb);
+}
+
+void CellPPU::Lhzx(uint32_t opcode)
+{
+	int rt = rt_d;
+    int ra = ra_d;
+    int rb = rb_d;
+
+    state.r[rt] = manager.Read16(ra ? state.r[ra] + state.r[rb] : state.r[rb]);
+
+	if (canDisassemble)
+        printf("lhzx r%d, r%d(r%d)\n", rt, rb, ra);
 }
 
 void CellPPU::Xor(uint32_t opcode)
@@ -1853,7 +1893,7 @@ void CellPPU::Or(uint32_t opcode)
         if (rs != rb)
             printf("or%s r%d, r%d, r%d\n", (opcode & 1) ? "." : "", ra, rs, rb);
         else
-            printf("mr%s r%d, r%d\n", (opcode & 1) ? "." : "", ra, rs);
+            printf("mr%s r%d, r%d (0x%08lx)\n", (opcode & 1) ? "." : "", ra, rs, state.r[ra]);
     }
 }
 
@@ -2127,6 +2167,18 @@ void CellPPU::Extsw(uint32_t opcode)
         printf("extsw%s r%d,r%d\n", rc ? "." : "", ra, rs);
 }
 
+void CellPPU::Dcbz(uint32_t opcode)
+{
+    int ra = ra_d;
+    int rb = rb_d;
+
+    auto dst = manager.GetRawPtr((ra ? state.r[ra] + state.r[rb] : state.r[rb]));
+    memset(dst, 0, 128);
+
+    if (canDisassemble)
+        printf("dcbz r%d,r%d\n", ra, rb);
+}
+
 void CellPPU::Lwz(uint32_t opcode)
 {
     uint8_t rt = rt_d;
@@ -2136,7 +2188,7 @@ void CellPPU::Lwz(uint32_t opcode)
     state.r[rt] = manager.Read32(ra ? state.r[ra] + d : d);
 
     if (canDisassemble)
-        printf("lwz r%d, %d(r%d)\n", rt, d, ra);
+        printf("lwz r%d, %d(r%d) (0x%08x)\n", rt, d, ra, ra ? state.r[ra] + d : d);
 }
 
 void CellPPU::Lwzu(uint32_t opcode)
@@ -2247,7 +2299,7 @@ void CellPPU::Stb(uint32_t opcode)
 
     if (canDisassemble)
     {
-        printf("stb r%d, %d(r%d)\n", rs, ds, ra);
+        printf("stb r%d, %d(r%d) (0x%02x -> 0x%08x)\n", rs, ds, ra, state.r[rs], ra ? state.r[ra] + ds : ds);
     }
 }
 
@@ -2576,7 +2628,7 @@ void CellPPU::Stdu(uint32_t opcode)
 
 void CellPPU::G_3F(uint32_t opcode)
 {
-    uint8_t field = (opcode >> 1) & 0x3FF;
+    uint32_t field = (opcode >> 1) & 0x3FF;
 
     switch (field)
     {
@@ -2601,14 +2653,17 @@ void CellPPU::G_3F(uint32_t opcode)
     case 0x028:
         Fneg(opcode);
         break;
-    case 0x02F:
+    case 0x32F:
         Fctidz(opcode);
         break;
     case 0x048:
         Fmr(opcode);
         break;
-    case 0x04E:
+    case 0x34E:
         Fcfid(opcode);
+        break;
+    case 0x108:
+        Fabs(opcode);
         break;
 	default:
 	{
@@ -2761,4 +2816,15 @@ void CellPPU::Fcfid(uint32_t opcode)
 
     if (canDisassemble)
         printf("fcfid r%d,r%d (%f)\n", frt, frb, state.fpr[frt].f);
+}
+
+void CellPPU::Fabs(uint32_t opcode)
+{
+    int frt = rt_d;
+    int frb = rb_d;
+
+    state.fpr[frt].f = std::abs(state.fpr[frb].f);
+
+    if (canDisassemble)
+        printf("fabs f%d,f%d\n", frt, frb);
 }

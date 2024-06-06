@@ -42,6 +42,8 @@ void RSX::Present()
     static char buf[4096];
     snprintf(buf, 4096, "PS3 - %f fps", fps);
     SDL_SetWindowTitle(window, buf);
+
+    CellGcm::RunFlipHandler();
 }
 
 void RSX::SetFramebuffer(int id, uint32_t offset, uint32_t pitch, uint32_t width, uint32_t height)
@@ -158,6 +160,9 @@ void RSX::DoCmd(uint32_t fullCmd, uint32_t cmd, std::vector<uint32_t> &args, int
         break;
     case 0x100:
         printf("NV40TCL_NOP()\n");
+        break;
+    case 0x110:
+        printf("NV40TCL_WAIT_FOR_IDLE()\n");
         break;
     case 0x18C:
         dmaColorB = args[0];
@@ -495,7 +500,6 @@ void RSX::DoCmd(uint32_t fullCmd, uint32_t cmd, std::vector<uint32_t> &args, int
         printf("NV40TCL_VP_RESULT_EN(0x%08x)\n", args[0]);
         break;
     case 0x3FEAD:
-        Present();
         break;
     default:
         printf("Unknown RSX command 0x%05x (0x%08x, ", cmd, fullCmd);

@@ -7,8 +7,14 @@
 #include <cstring>
 #include <fstream>
 
+#define SPU_DEBUG 1
+
+#if SPU_DEBUG
 #define printf(x, ...) \
 	if (id == 0) { printf(x, ##__VA_ARGS__); }
+#else
+#define printf(x, ...) 0
+#endif
 
 static int g_id = 0;
 
@@ -20,11 +26,11 @@ SPU::SPU(MemoryManager* manager)
 
 void SPU::Run()
 {
+	if (!running)
+		return;
+	
 	for (int i = 0; i < 4; i++)
 	{
-		if (!running)
-			return;
-
 		uint32_t instr = Read32(pc);
 		pc += 4;
 
@@ -53,6 +59,9 @@ void SPU::Run()
 			return;
 		case 0x40:
 			brz(instr);
+			return;
+		case 0x41:
+			stqa(instr);
 			return;
 		case 0x42:
 			brnz(instr);
@@ -116,6 +125,9 @@ void SPU::Run()
 		case 0x4c:
 			cgti(instr);
 			return;
+		case 0x5c:
+			clgti(instr);
+			return;
 		case 0x5e:
 			clgtbi(instr);
 			return;
@@ -135,6 +147,9 @@ void SPU::Run()
 		case 0x40:
 			sf(instr);
 			return;
+		case 0x42:
+			bg(instr);
+			return;
 		case 0x48:
 			sfh(instr);
 			return;
@@ -150,6 +165,9 @@ void SPU::Run()
 		case 0xC0:
 			a(instr);
 			return;
+		case 0xC2:
+			cg(instr);
+			return;
 		case 0x10d:
 			wrch(instr);
 			return;
@@ -159,8 +177,14 @@ void SPU::Run()
 		case 0x1a8:
 			bi(instr);
 			return;
+		case 0x1a9:
+			bisl(instr);
+			return;
 		case 0x1ac:
 			hbr(instr);
+			return;
+		case 0x1b4:
+			fsm(instr);
 			return;
 		case 0x1c4:
 			lqx(instr);
@@ -174,6 +198,9 @@ void SPU::Run()
 		case 0x1f6:
 			cwd(instr);
 			return;
+		case 0x1f7:
+			cdd(instr);
+			return;
 		case 0x1fc:
 			rotqbyi(instr);
 			return;
@@ -185,6 +212,18 @@ void SPU::Run()
 			return;
 		case 0x201:
 			printf("nop\n");
+			return;
+		case 0x340:
+			addx(instr);
+			return;
+		case 0x341:
+			sfx(instr);
+			return;
+		case 0x3C5:
+			mpyh(instr);
+			return;
+		case 0x3CC:
+			mpyu(instr);
 			return;
 		}
 
@@ -241,6 +280,16 @@ void SPU::WriteProblemStorage(uint32_t reg, uint32_t data)
 {
 	switch (reg)
 	{
+	case 0x400C:
+	{
+		if (running == false && waitingOnInMbox == true)
+		{
+			running = true;
+			waitingOnInMbox = false;
+		}
+		inMbox.push(data);
+		break;
+	}
 	case 0x401C:
 		running = data & 1;
 		break;
@@ -305,6 +354,18 @@ void SPU::brz(uint32_t instr)
 		pc += i16-4;
 }
 
+void SPU::stqa(uint32_t instr)
+{
+	uint8_t rt = instr & 0x7F;
+	int32_t i16 = ((int16_t)((instr >> 7) & 0xFFFF)) << 2;
+	i16 &= (256*1024)-1;
+	i16 &= 0xFFFFFFF0;
+
+	printf("stqa $%d,0x%08x\n", rt, i16);
+
+	Write128(i16, gprs[rt]);
+}
+
 void SPU::brnz(uint32_t instr)
 {
 	uint8_t rt = instr & 0x7F;
@@ -321,7 +382,7 @@ void SPU::stqr(uint32_t instr)
 	uint32_t i16 = (instr >> 7) & 0xFFFF;
 	i16 <<= 2;
 
-	uint32_t ea = i16 + (pc-4);
+	uint32_t ea = (i16 + (pc-4)) & 0xFFFFFFF0;
 	uint8_t rt = instr & 0x7F;
 
 	printf("stqr $%d, 0x%08x\n", rt, ea);
@@ -473,7 +534,7 @@ void SPU::stqd(uint32_t instr)
 	uint8_t ra = (instr >> 7) & 0x7F;
 	uint8_t rt = instr & 0x7F;
 
-	uint32_t ea = gprs[ra].u32[3] + i10;
+	uint32_t ea = (gprs[ra].u32[3] + i10) & 0xFFFFFFF0;
 	Write128(ea, gprs[rt]);
 
 	printf("stqd $%d, %d($%d)\n", rt, i10, ra);
@@ -489,7 +550,7 @@ void SPU::lqd(uint32_t instr)
 	uint8_t ra = (instr >> 7) & 0x7F;
 	uint8_t rt = instr & 0x7F;
 
-	uint32_t ea = gprs[ra].u32[3] + i10;
+	uint32_t ea = (gprs[ra].u32[3] + i10) & 0xFFFFFFF0;
 	gprs[rt] = Read128(ea);
 
 	printf("lqd $%d, %d($%d)\n", rt, i10, ra);
@@ -500,7 +561,7 @@ void SPU::lqr(uint32_t instr)
 	uint8_t rt = instr & 0x7F;
 	int32_t i16 = ((int16_t)((instr >> 7) & 0xFFFF)) << 2;
 
-	uint32_t ea = pc+i16-4;
+	uint32_t ea = ((pc-4)+i16) & 0xFFFFFFF0;
 
 	gprs[rt] = Read128(ea);
 
@@ -520,6 +581,22 @@ void SPU::cgti(uint32_t instr)
 	}
 
 	printf("cgti $%d, $%d, 0x%08x\n", rt, ra, i10);
+}
+
+void SPU::clgti(uint32_t instr)
+{
+	uint32_t i10 = (instr >> 14) & 0xFF;
+	uint8_t ra = (instr >> 7) & 0x7F;
+	uint8_t rt = instr & 0x7F;
+
+	i10 = (i10 & (1 << 10)) ? (i10 | 0xFFFFFC00) : i10;
+
+	for (int i = 0; i < 4; i++)
+	{
+		gprs[rt].u32[i] = (gprs[ra].u32[i] > i10) ? 0xFFFFFFFF : 0x00000000;
+	}
+
+	printf("clgti $%d,$%d,%d\n", rt, ra, i10);
 }
 
 void SPU::clgtbi(uint32_t instr)
@@ -578,6 +655,21 @@ void SPU::rdch(uint32_t instr)
 	case 24:
 		gprs[rt].u32[3] = mfc_tag_mask; // Just tell the SPU that all operations have been completed
 		break;
+	case 29:
+	{
+		if (inMbox.empty())
+		{
+			running = false;
+			waitingOnInMbox = true;
+			pc -= 4;
+		}
+		else
+		{
+			gprs[rt].u32[3] = inMbox.front();
+			inMbox.pop();
+		}
+		break;
+	}
 	default:
 		printf("Unknown channel\n");
 		exit(1);
@@ -594,6 +686,18 @@ void SPU::sf(uint32_t instr)
 		gprs[rt].u32[i] = gprs[rb].u32[i] - gprs[ra].u32[i];
 	
 	printf("sf $%d, $%d, $%d\n", rt, ra, rb);
+}
+
+void SPU::bg(uint32_t instr)
+{
+	uint8_t rb = (instr >> 14) & 0x7F;
+	uint8_t ra = (instr >> 7) & 0x7F;
+	uint8_t rt = instr & 0x7F;
+
+	for (int i = 0; i < 4; i++)
+		gprs[rt].u32[i] = (gprs[rb].u32[i] > gprs[ra].u32[i]) ? 1 : 0;
+	
+	printf("bg $%d,$%d,$%d\n", rt, ra, rb);
 }
 
 void SPU::sfh(uint32_t instr)
@@ -618,6 +722,22 @@ void SPU::a(uint32_t instr)
 		gprs[rt].u32[i] = (int32_t)gprs[ra].u32[i] + (int32_t)gprs[rb].u32[i];
 	
 	printf("a $%d, $%d, $%d\n", rt, ra, rb);
+}
+
+void SPU::cg(uint32_t instr)
+{
+	uint8_t rb = (instr >> 14) & 0x7F;
+	uint8_t ra = (instr >> 7) & 0x7F;
+	uint8_t rt = instr & 0x7F;
+
+	for (int i = 0; i < 4; i++)
+	{
+		int64_t op1 = (int32_t)gprs[ra].u32[i];
+		int64_t op2 = (int32_t)gprs[rb].u32[i];
+		gprs[rt].u32[i] = (((uint64_t)(op1 + op2)) > UINT32_MAX) ? 1 : 0;
+	}
+
+	printf("cg $%d,$%d,$%d\n", rt, ra, rb);
 }
 
 void SPU::rotmi(uint32_t instr)
@@ -668,13 +788,7 @@ void SPU::shli(uint32_t instr)
 	uint8_t ra = (instr >> 7) & 0x7F;
 	uint8_t rt = instr & 0x7F;
 
-	for (int i = 0; i < 4; i++)
-	{
-		if (i7 < 32)
-			gprs[rt].u32[i] = gprs[ra].u32[i] << i7;
-		else
-			gprs[rt].u32[i] = 0;
-	}
+	gprs[rt].vi = _mm_slli_epi32(gprs[ra].vi, i7 & 0x3f);
 
 	printf("shli $%d,$%d,%d\n", rt, ra, i7);
 }
@@ -689,22 +803,23 @@ void SPU::wrch(uint32_t instr)
 	switch (ca)
 	{
 	case 16:
+		printf("0x%08x -> mfc_lsa\n", gprs[rt].u32[3]);
 		mfc_lsa = gprs[rt].u32[3];
 		break;
 	case 17:
-		printf("0x%08lx -> mfc_eah\n", gprs[rt].u32[3]);
+		printf("0x%08x -> mfc_eah\n", gprs[rt].u32[3]);
 		mfc_ea.hi = gprs[rt].u32[3];
 		break;
 	case 18:
-		printf("0x%08lx -> mfc_eal\n", gprs[rt].u32[3]);
+		printf("0x%08x -> mfc_eal\n", gprs[rt].u32[3]);
 		mfc_ea.lo = gprs[rt].u32[3];
 		break;
 	case 19:
-		printf("0x%08lx -> mfc_len\n", gprs[rt].u32[3]);
+		printf("0x%08x -> mfc_len\n", gprs[rt].u32[3]);
 		mfc_len = gprs[rt].u32[3];
 		break;
 	case 20:
-		printf("0x%08lx -> mfc_tag\n", gprs[rt].u32[3]);
+		printf("0x%08x -> mfc_tag\n", gprs[rt].u32[3]);
 		break;
 	case 21:
 	{
@@ -718,14 +833,16 @@ void SPU::wrch(uint32_t instr)
 			}
 			printf("Ran mfc dma command 0x%02x (transferred %d bytes from 0x%08lx -> 0x%08x\n", gprs[rt].u32[3], mfc_len, mfc_ea.ea-mfc_len, mfc_lsa-mfc_len);
 		}
-		else if (cmd == 0x20)
+		// putf is normally a fence to ensure DMA completes in-order
+		// But we do DMA instantly, so it's essentially just another put
+		else if (cmd == 0x20 || cmd == 0x22)
 		{
 			// TODO: Maybe don't make DMA stuff instant?
 			for (int i = 0; i < mfc_len; i++)
 			{
 				manager->Write8(mfc_ea.ea++, localStore[mfc_lsa++]);
 			}
-			printf("Ran mfc dma command 0x%02x (transferred %d bytes from 0x%08lx -> 0x%08x\n", gprs[rt].u32[3], mfc_len, mfc_lsa-mfc_len, mfc_ea.ea-mfc_len);
+			printf("Ran mfc dma command 0x%02x (transferred %d bytes from 0x%08x -> 0x%08lx\n", gprs[rt].u32[3], mfc_len, mfc_lsa-mfc_len, mfc_ea.ea-mfc_len);
 		}
 		else
 		{
@@ -755,7 +872,7 @@ void SPU::stqx(uint32_t instr)
 	uint8_t ra = (instr >> 7) & 0x7F;
 	uint8_t rt = instr & 0x7F;
 
-	uint32_t ea = gprs[ra].u32[3] + gprs[rb].u32[3];
+	uint32_t ea = (gprs[ra].u32[3] + gprs[rb].u32[3]) & 0xFFFFFFF0;
 
 	Write128(ea, gprs[rt]);
 
@@ -767,12 +884,36 @@ void SPU::bi(uint32_t instr)
 	uint8_t ra = (instr >> 7) & 0x7F;
 	pc = gprs[ra].u32[3];
 
-	printf("br $%d\n", ra);
+	printf("bi $%d\n", ra);
+}
+
+void SPU::bisl(uint32_t instr)
+{
+	printf("0x%08x\n", pc);
+	uint8_t rt = instr & 0x7F;
+	uint8_t ra = (instr >> 7) & 0x7F;
+	uint32_t addr = gprs[ra].u32[3];
+	gprs[rt].u32[3] = pc;
+	pc = addr;
+
+	printf("0x%08x: bisl $%d,$%d\n", pc, rt, ra);
 }
 
 void SPU::hbr(uint32_t instr)
 {
 	printf("hbr\n");
+}
+
+void SPU::fsm(uint32_t instr)
+{
+	uint8_t ra = (instr >> 7) & 0x7F;
+	uint8_t rt = instr & 0x7F;
+
+	const auto bits = _mm_shuffle_epi32(gprs[ra].vi, 0xff);
+	const auto mask = _mm_set_epi32(8, 4, 2, 1);
+	gprs[rt].vi = _mm_cmpeq_epi32(_mm_and_si128(bits, mask), mask);
+	
+	printf("fsm $%d,$%d\n", rt, ra);
 }
 
 void SPU::lqx(uint32_t instr)
@@ -781,7 +922,7 @@ void SPU::lqx(uint32_t instr)
 	uint8_t ra = (instr >> 7) & 0x7F;
 	uint8_t rt = instr & 0x7F;
 
-	uint32_t ea = gprs[ra].u32[3] + gprs[rb].u32[3];
+	uint32_t ea = (gprs[ra].u32[3] + gprs[rb].u32[3]) & 0xFFFFFFF0;
 
 	gprs[rt] = Read128(ea);
 
@@ -829,6 +970,21 @@ void SPU::cwd(uint32_t instr)
 	gprs[rt].u32[t] = 0x00010203;
 
 	printf("cwd $%d, %d($%d)\n", rt, i7, ra);
+}
+
+void SPU::cdd(uint32_t instr)
+{
+	uint8_t i7 = (instr >> 14) & 0x7F;
+	uint8_t ra = (instr >> 7) & 0x7F;
+	uint8_t rt = instr & 0x7F;
+
+	auto t = (~(i7 + gprs[ra].u32[3]) & 0x8) >> 3;
+
+	gprs[rt].u64[0] = 0x18191A1B1C1D1E1FULL;
+	gprs[rt].u64[1] = 0x1011121314151617ULL;
+	gprs[rt].u64[t] = 0x0001020304050607;
+
+	printf("cdd $%d, %d($%d)\n", rt, i7, ra);
 }
 
 void SPU::rotqbyi(uint32_t instr)
@@ -903,6 +1059,73 @@ void SPU::shlqbyi(uint32_t instr)
 	}
 
 	printf("shlqbyi $%d,$%d,%d\n", rt, ra, i7);
+}
+
+void SPU::addx(uint32_t instr)
+{
+	uint8_t rb = (instr >> 14) & 0x7F;
+	uint8_t ra = (instr >> 7) & 0x7F;
+	uint8_t rt = instr & 0x7F;
+
+	for (int i = 0; i < 4; i++)
+		gprs[rt].u32[i] = gprs[ra].u32[i] + gprs[rb].u32[i] + (gprs[rt].u32[i] & 1);
+	
+	printf("addx $%d,$%d,$%d\n", rt, ra, rb);
+}
+
+void SPU::sfx(uint32_t instr)
+{
+	uint8_t rb = (instr >> 14) & 0x7F;
+	uint8_t ra = (instr >> 7) & 0x7F;
+	uint8_t rt = instr & 0x7F;
+
+	for (int i = 0; i < 4; i++)
+		gprs[rt].u32[i] = gprs[rb].u32[i] + (~gprs[ra].u32[i]) + (gprs[rt].u32[i] & 1);
+	
+	printf("sfx $%d,$%d,$%d\n", rt, ra, rb);
+}
+
+void SPU::mpyh(uint32_t instr)
+{
+	uint8_t rb = (instr >> 14) & 0x7F;
+	uint8_t ra = (instr >> 7) & 0x7F;
+	uint8_t rt = instr & 0x7F;
+
+#if 0
+	gprs[rt].vi = _mm_slli_epi32(_mm_mullo_epi16(_mm_srli_epi32(gprs[ra].vi, 16), gprs[rb].vi), 16);
+#else
+	SpuReg tmp, op1;
+	for (int i = 0; i < 4; i++)
+	{
+		op1.u32[i] = gprs[ra].u32[i] >> 16;
+	}
+
+	for (int i = 0; i < 8; i++)
+	{
+		tmp.u16[i] = op1.u16[i] * gprs[rb].u16[i];
+	}
+
+	for (int i = 0; i < 4; i++)
+	{
+		gprs[rt].u32[i] = tmp.u32[i] << 16;
+	}
+#endif
+
+	printf("mpyh $%d,$%d,$%d\n", rt, ra, rb);
+}
+
+void SPU::mpyu(uint32_t instr)
+{
+	uint8_t rb = (instr >> 14) & 0x7F;
+	uint8_t ra = (instr >> 7) & 0x7F;
+	uint8_t rt = instr & 0x7F;
+
+	gprs[rt].u32[3] = gprs[ra].u16[6]*gprs[rb].u16[6];
+	gprs[rt].u32[2] = gprs[ra].u16[4]*gprs[rb].u16[4];
+	gprs[rt].u32[1] = gprs[ra].u16[2]*gprs[rb].u16[2];
+	gprs[rt].u32[0] = gprs[ra].u16[0]*gprs[rb].u16[0];
+
+	printf("mpyu $%d,$%d,$%d\n", rt, ra, rb);
 }
 
 void SPU::selb(uint32_t instr)

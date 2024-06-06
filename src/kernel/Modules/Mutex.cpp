@@ -48,7 +48,7 @@ uint32_t MutexModule::sysLwCondCreate(uint64_t condptr, uint32_t lwid_ptr, uint3
 
 uint32_t MutexModule::sysLwMutexLock(uint64_t mutexptr, uint64_t timeout, CellPPU *ppu)
 {
-    if (ppu->GetManager()->Read64(mutexptr))
+    if (ppu->GetManager()->Read64(mutexptr) && !(ppu->GetManager()->Read32(mutexptr+8) & 0x10))
     {
         printf("TODO: Tried to lock a locked mutex!\n");
     }

@@ -147,4 +147,6 @@ inline std::string DepthFuncToString(DepthTestFunc func)
     case ALWAYS:
         return "NV30_3D_DEPTH_FUNC_ALWAYS";
     }
+
+    return "NV30_3D_DEPTH_FUNC_INVALID";
 }

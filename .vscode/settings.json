@@ -71,6 +71,20 @@
         "iostream": "cpp",
         "ranges": "cpp",
         "cfenv": "cpp",
-        "typeindex": "cpp"
-    }
+        "typeindex": "cpp",
+        "cerrno": "cpp",
+        "ios": "cpp",
+        "queue": "cpp",
+        "xiosbase": "cpp",
+        "xlocale": "cpp",
+        "xlocinfo": "cpp",
+        "xlocnum": "cpp",
+        "xmemory": "cpp",
+        "xstddef": "cpp",
+        "xstring": "cpp",
+        "xtree": "cpp",
+        "xutility": "cpp",
+        "codecvt": "cpp"
+    },
+    "cmake.sourceDirectory": "/home/google0101/Documents/ps3"
 }

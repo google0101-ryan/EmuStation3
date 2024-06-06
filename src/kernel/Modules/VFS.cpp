@@ -29,15 +29,18 @@ void VFS::InitVFS()
 
     // Create our VFS structure
     std::filesystem::create_directories(basePath + "/dev_hdd0");
-    Mount(basePath.c_str(), "/");
+    Mount("dev_hdd0", "/dev_hdd0");
 }
 
 void VFS::Mount(const char *base, const char *mnt)
 {
-    mntPoints.push_back({base, mnt});
+    printf("Mounting %s on %s\n", (basePath + "/" + base).c_str(), mnt);
+    if (!std::filesystem::exists(basePath + "/" + base))
+        std::filesystem::create_directories(basePath + "/" + base);
+    mntPoints.push_back({basePath + "/" + base, mnt});
 }
 
-const char* GetMountPoint(const char*& path)
+const char* VFS::GetMountPoint(const char*& path)
 {
     int index = -1;
     for (int i = 0; i < mntPoints.size(); i++)
@@ -49,34 +52,45 @@ const char* GetMountPoint(const char*& path)
     if (index == -1)
     {
         printf("Unknown mp for \"%s\"\n", path);
-        exit(1);
+        return ".";
     }
 
     path += mntPoints[index].path.size();
     return mntPoints[index].base.c_str();
 }
 
+const char *VFS::GetbasePath()
+{
+    return basePath.c_str();
+}
+
 uint32_t VFS::cellFsOpen(uint32_t namePtr, int32_t oflags, uint32_t fdPtr, CellPPU *ppu)
 {
     const char* name = (char*)ppu->GetManager()->GetRawPtr(namePtr);
     
-    printf("cellFsOpen(\"%s\", %d, 0x%08lx)\n", name, oflags, fdPtr);
+    printf("cellFsOpen(\"%s\", %d, 0x%08x)\n", name, oflags, fdPtr);
     
-    std::string fullPath = std::string(GetMountPoint(name)) + name;
+    std::string fullPath = std::string(GetMountPoint(name));
+    fullPath += name;
     
 
     // Create directories if needed
-    std::string dirs = fullPath.substr(0, fullPath.find_last_of('/'));
-    std::filesystem::create_directories(dirs);
-
     int fd = curFd++;
-    fds[fd] = fopen(fullPath.c_str(), "w+");
+    if (oflags & 0x200)
+    {    
+        std::string dirs = fullPath.substr(0, fullPath.find_last_of('/'));
+        std::filesystem::create_directories(dirs);
+        fds[fd] = fopen(fullPath.c_str(), "w+");
+    }
+    else
+        fds[fd] = fopen(fullPath.c_str(), "rwb");
 
     if (fds[fd] == NULL)
     {
         printf("ERROR: Couldn't open file \"%s\": %s\n", fullPath.c_str(), strerror(errno));
         fd = -1;
         ppu->GetManager()->Write32(fdPtr, fd);
+        return CELL_ENOENT;
     }
 
     ppu->GetManager()->Write32(fdPtr, fd);
@@ -85,7 +99,7 @@ uint32_t VFS::cellFsOpen(uint32_t namePtr, int32_t oflags, uint32_t fdPtr, CellP
 
 uint32_t VFS::cellFsSeek(uint32_t fd, uint32_t offs, uint32_t whence, uint32_t offsPtr, CellPPU* ppu)
 {
-    printf("cellFsSeekl(%d, %d, %d, 0x%08lx)\n", fd, offs, whence, offsPtr);
+    printf("cellFsSeekl(%d, %d, %d, 0x%08x)\n", fd, offs, whence, offsPtr);
 
     fseek(fds[fd], offs, whence);
     auto filePos = ftell(fds[fd]);
@@ -154,8 +168,27 @@ uint32_t VFS::cellFsFstat(uint32_t fd, uint32_t statPtr, CellPPU* ppu)
     else
     {
         printf("Error: Couldn't stat unknown fd %d!\n", fd);
-        exit(1);
+        return CELL_ENOENT;
     }
 
     return CELL_OK;
+}
+
+uint32_t VFS::cellVfsFstat(uint32_t namePtr, uint32_t statPtr, CellPPU *ppu)
+{
+    const char* name = (char*)ppu->GetManager()->GetRawPtr(namePtr);
+    
+    printf("cellFsStat(\"%s\", 0x%08x)\n", name, statPtr);
+    
+    std::string fullPath = std::string(GetMountPoint(name));
+    fullPath += name;
+    
+    if (!std::filesystem::exists(fullPath))
+    {
+        printf("Failed to stat file\n");
+        return CELL_ENOENT;
+    }
+
+    printf("TODO: stat file!\n");
+    exit(1);
 }

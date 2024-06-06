@@ -22,8 +22,10 @@ set(SOURCES src/main.cpp
             src/kernel/Modules/CellResc.cpp
             src/kernel/Modules/CellSysUtil.cpp
             src/kernel/Modules/CellSpurs.cpp
+            src/kernel/Modules/CellGame.cpp
             src/kernel/Syscall.cpp
-            src/loaders/Elf.cpp)
+            src/loaders/Elf.cpp
+            src/loaders/SFO.cpp)
 
 set(CMAKE_BUILD_TYPE Debug)
 
@@ -40,7 +42,7 @@ target_link_libraries(ps3 ${SDL2_LIBRARIES})
 if(MSVC)
   target_compile_options(${TARGET_NAME} PRIVATE /W4 /WX)
 else()
-  target_compile_options(${TARGET_NAME} PRIVATE -pg -O3 -g -std=c++2b -mavx -mavx512f)
+  target_compile_options(${TARGET_NAME} PRIVATE -pg -O3 -g -std=c++2b -msse2 -msse4.1)
   target_link_options(${TARGET_NAME} PRIVATE -pg)
 endif()
 

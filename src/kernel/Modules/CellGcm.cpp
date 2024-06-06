@@ -53,6 +53,9 @@ struct GcmTileInfo
     }
 } tiles[15];
 
+uint32_t flipHandler;
+CellPPU* gGcmPPU;
+
 uint32_t CellGcm::cellGcmInitBody(uint32_t ctxtPtr, uint32_t cmdSize, uint32_t ioSize, uint32_t ioAddrPtr, CellPPU *ppu)
 {
     printf("cellGcmInitBody(0x%08x, 0x%08x, 0x%08x, 0x%08x)\n", ctxtPtr, cmdSize, ioSize, ioAddrPtr);
@@ -285,7 +288,7 @@ uint32_t CellGcm::cellGcmGetControlRegister(CellPPU* ppu)
 
 uint32_t CellGcm::cellGcmGetFlipStatus()
 {
-    printf("cellGcmGetFlipStatus() = %d\n", rsx->GetFlipped());
+    // printf("cellGcmGetFlipStatus() = %d\n", rsx->GetFlipped());
     return !rsx->GetFlipped();
 }
 
@@ -383,6 +386,14 @@ uint32_t CellGcm::cellVideoOutGetResolutionAvailability(uint32_t videoOut, uint3
     }
 }
 
+void CellGcm::cellGcmSetFlipHandler(uint32_t handlerPtr, CellPPU* ppu)
+{
+    printf("cellGcmSetFlipHandler(handler=*0x%08x)\n", handlerPtr);
+
+    flipHandler = ppu->GetManager()->Read32(handlerPtr);
+    gGcmPPU = ppu;
+}
+
 void CellGcm::cellGcmCallback(CellPPU* ppu)
 {
     uint32_t begin = ppu->GetManager()->Read32(gcm_info.context_addr);
@@ -398,6 +409,11 @@ void CellGcm::cellGcmCallback(CellPPU* ppu)
     ppu->GetManager()->Write32(gcm_info.context_addr+8, begin + res);
     ppu->GetManager()->Write32(gcm_info.control_addr, put);
     ppu->GetManager()->Write32(gcm_info.control_addr+4, 0);
+}
+
+void CellGcm::RunFlipHandler()
+{
+    gGcmPPU->RunSubroutine(flipHandler);
 }
 
 uint32_t CellGcm::GetIOAddres()

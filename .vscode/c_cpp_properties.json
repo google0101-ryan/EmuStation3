@@ -3,10 +3,11 @@
         {
             "name": "Linux",
             "includePath": [
-                "${workspaceFolder}/**"
+                "${workspaceFolder}/**",
+                "/usr/local/ps3dev/ppu/lib/gcc/powerpc64-ps3-elf/7.2.0/include"
             ],
             "defines": [],
-            "compilerPath": "/usr/bin/gcc-13",
+            "compilerPath": "/usr/bin/gcc-12",
             "cStandard": "c17",
             "cppStandard": "c++23",
             "intelliSenseMode": "linux-gcc-x64"
